@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GML Kubatur</title>
+<style>
+  :root{--bg:#f4f5f2;--card:#fff;--ink:#1d2321;--mut:#6b726f;--line:#dfe2dc;--acc:#1f5f4a;--acc2:#e8f1ec;--err:#b03a2e;--errbg:#fbeceb}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px}
+  .wrap{width:100%;max-width:620px}
+  h1{font-size:26px;font-weight:650;letter-spacing:-0.3px}
+  .lead{color:var(--mut);margin:6px 0 22px;font-size:15px;line-height:1.5}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px}
+  .drop{display:block;border:2px dashed #b9c2bc;border-radius:12px;padding:34px 18px;text-align:center;cursor:pointer;transition:.15s;background:#fafbf9}
+  .drop:hover,.drop.over{border-color:var(--acc);background:var(--acc2)}
+  .drop strong{display:block;font-size:16px;margin-bottom:4px}
+  .drop span{color:var(--mut);font-size:13px}
+  .file{margin-top:14px;font-size:14px;display:none;padding:10px 12px;background:var(--acc2);border-radius:8px;word-break:break-all}
+  input[type=file]{display:none}
+  button{margin-top:16px;width:100%;padding:13px;border:0;border-radius:10px;background:var(--acc);color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+  button:disabled{background:#9fb3aa;cursor:not-allowed}
+  .err{margin-bottom:16px;padding:12px 14px;border-radius:10px;background:var(--errbg);color:var(--err);font-size:14px;line-height:1.45}
+  ul{margin:18px 0 0 18px;color:var(--mut);font-size:13px;line-height:1.7}
+  .busy{position:fixed;inset:0;background:rgba(244,245,242,.92);display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;font-size:15px}
+  .busy.on{display:flex}
+  .spin{width:38px;height:38px;border:4px solid #cfd8d3;border-top-color:var(--acc);border-radius:50%;animation:r 1s linear infinite}
+  .busy small{color:var(--mut);max-width:340px;text-align:center;line-height:1.5}
+  @keyframes r{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>GML → äquivalente Kubatur</h1>
+  <p class="lead">CityGML-Datei hochladen. Ergebnis: 3D-Ansicht mit Quadern, Dachformen, Hüllflächen und der Prüfung, ob die im GML angegebene Bounding Box alle Gebäudekoordinaten enthält.</p>
+
+  <div class="card">
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <form id="f" action="/process" method="post" enctype="multipart/form-data">
+      <label class="drop" id="drop" for="gml">
+        <strong>GML-Datei hierher ziehen</strong>
+        <span>oder klicken zum Auswählen · .gml, .xml, .citygml · max. {{ max_mb }} MB</span>
+      </label>
+      <input type="file" id="gml" name="gml" accept=".gml,.xml,.citygml">
+      <div class="file" id="fname"></div>
+      <div class="err" id="cerr" style="display:none;margin:14px 0 0"></div>
+      <button id="go" type="submit" disabled>Berechnen</button>
+    </form>
+    <ul>
+      <li>Die Datei wird nur für die Berechnung verwendet; Ergebnisse werden nach 2 Stunden gelöscht.</li>
+      <li>Nach längerer Pause kann der erste Aufruf bis zu einer Minute dauern (Server startet).</li>
+    </ul>
+  </div>
+</div>
+
+<div class="busy" id="busy"><div class="spin"></div><div>Geometrie wird berechnet …</div>
+  <small>Große Dateien mit vielen Gebäudeteilen können eine Weile brauchen.</small></div>
+
+<script>
+  var MAX = {{ max_mb }} * 1024 * 1024;
+  var inp = document.getElementById('gml'), drop = document.getElementById('drop');
+  var go = document.getElementById('go'), fname = document.getElementById('fname'), cerr = document.getElementById('cerr');
+  function pick(file){
+    cerr.style.display = 'none'; go.disabled = true;
+    if (!file) { fname.style.display = 'none'; return; }
+    fname.style.display = 'block';
+    fname.textContent = file.name + '  ·  ' + (file.size/1048576).toFixed(2) + ' MB';
+    var ok = /\.(gml|xml|citygml)$/i.test(file.name);
+    if (!ok) { cerr.textContent = 'Bitte eine .gml-, .xml- oder .citygml-Datei wählen.'; cerr.style.display='block'; return; }
+    if (file.size > MAX) { cerr.textContent = 'Die Datei ist größer als {{ max_mb }} MB.'; cerr.style.display='block'; return; }
+    go.disabled = false;
+  }
+  inp.addEventListener('change', function(){ pick(inp.files[0]); });
+  ['dragenter','dragover'].forEach(function(e){ drop.addEventListener(e, function(ev){ ev.preventDefault(); drop.classList.add('over'); }); });
+  ['dragleave','drop'].forEach(function(e){ drop.addEventListener(e, function(ev){ ev.preventDefault(); drop.classList.remove('over'); }); });
+  drop.addEventListener('drop', function(ev){
+    if (ev.dataTransfer.files.length) { inp.files = ev.dataTransfer.files; pick(inp.files[0]); }
+  });
+  document.getElementById('f').addEventListener('submit', function(){
+    document.getElementById('busy').classList.add('on'); go.disabled = true;
+  });
+  window.addEventListener('pageshow', function(){ document.getElementById('busy').classList.remove('on'); if (inp.files[0]) pick(inp.files[0]); });
+</script>
+</body>
+</html>

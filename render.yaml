@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: gml-kubatur
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app.main:app --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 300
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: MAX_UPLOAD_MB
+        value: "100"
