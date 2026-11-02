@@ -8,6 +8,7 @@ GML (`gml:Envelope` / `gml:Box`) really contain all building coordinates.
 
 ```
 app/gml_core.py    the calculation (your original script, no def-functions)
+app/gml_check.py   bounding-box check over several GML files (no rendering)
 app/main.py        Flask web wrapper (upload, downloads)
 templates/         upload page
 run_local.py       desktop use: file dialog -> HTML opens in browser
@@ -38,3 +39,18 @@ python run_local.py             # or: old desktop workflow with file dialog
   dashed wireframe, coordinates outside are red dots (checkbox "GML-Bounding-Box prüfen").
 * FileMaker output: `[BBOX] OK|FEHLER|KEINE` and one `[BBOX n]` line per box:
   `OK|FEHLER  points_outside  points_total  max_exceed_X  max_exceed_Y  [max_exceed_Z]  [SWAP_XY]`
+
+## Checking several GML files
+
+Besides the Kubatur file (rendered in the viewer) any number of further GML files can be
+attached. They are **not** rendered; for every file (the Kubatur file included) the report checks:
+
+* its own `gml:Envelope` / `gml:Box` against its building coordinates (same rule as above), and
+* whether every building lies inside the **Kubatur bounding box**: the CityModel envelope of the
+  Kubatur file, or its real coordinate extent if it declares none. Buildings are reported as
+  inside / partly outside / outside, with the maximum exceedance per axis.
+* Files in a different coordinate system (EPSG code) than the Kubatur file get a warning.
+* LBB numbers (`we_nr` / `ge_nr`) used by different building IDs across the files are listed.
+
+The viewer's "Datei" panel shows the overall result with a link to the report (`/report/<token>`);
+the text version is appended to the Protokoll.

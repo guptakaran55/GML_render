@@ -16,6 +16,8 @@
   .drop:hover,.drop.over{border-color:var(--acc);background:var(--acc2)}
   .drop strong{display:block;font-size:16px;margin-bottom:4px}
   .drop span{color:var(--mut);font-size:13px}
+  .drop.small{margin-top:14px;padding:16px 18px}
+  .drop.small strong{font-size:14px}
   .file{margin-top:14px;font-size:14px;display:none;padding:10px 12px;background:var(--acc2);border-radius:8px;word-break:break-all}
   input[type=file]{display:none}
   button{margin-top:16px;width:100%;padding:13px;border:0;border-radius:10px;background:var(--acc);color:#fff;font-size:15px;font-weight:600;cursor:pointer}
@@ -32,17 +34,23 @@
 <body>
 <div class="wrap">
   <h1>GML → äquivalente Kubatur</h1>
-  <p class="lead">CityGML-Datei hochladen. Ergebnis: 3D-Ansicht mit Quadern, Dachformen, Hüllflächen und der Prüfung, ob die im GML angegebene Bounding Box alle Gebäudekoordinaten enthält.</p>
+  <p class="lead">CityGML-Datei hochladen. Ergebnis: 3D-Ansicht mit Quadern, Dachformen, Hüllflächen und der Prüfung, ob die im GML angegebene Bounding Box alle Gebäudekoordinaten enthält. Optional weitere GML-Dateien anhängen: sie werden nur geprüft, ob ihre Gebäude in der Bounding Box der Kubatur liegen.</p>
 
   <div class="card">
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
     <form id="f" action="/process" method="post" enctype="multipart/form-data">
       <label class="drop" id="drop" for="gml">
-        <strong>GML-Datei hierher ziehen</strong>
+        <strong>Kubatur-GML-Datei hierher ziehen</strong>
         <span>oder klicken zum Auswählen · .gml, .xml, .citygml · max. {{ max_mb }} MB</span>
       </label>
       <input type="file" id="gml" name="gml" accept=".gml,.xml,.citygml">
       <div class="file" id="fname"></div>
+      <label class="drop small" id="drop2" for="extra">
+        <strong>Weitere GML-Dateien (optional)</strong>
+        <span>werden nicht dargestellt, nur geprüft: eigene Bounding Box und ob ihre Gebäude in der Bounding Box der Kubatur liegen</span>
+      </label>
+      <input type="file" id="extra" name="extra" accept=".gml,.xml,.citygml" multiple>
+      <div class="file" id="fname2"></div>
       <div class="err" id="cerr" style="display:none;margin:14px 0 0"></div>
       <button id="go" type="submit" disabled>Berechnen</button>
     </form>
@@ -60,26 +68,36 @@
   var MAX = {{ max_mb }} * 1024 * 1024;
   var inp = document.getElementById('gml'), drop = document.getElementById('drop');
   var go = document.getElementById('go'), fname = document.getElementById('fname'), cerr = document.getElementById('cerr');
-  function pick(file){
+  var inp2 = document.getElementById('extra'), drop2 = document.getElementById('drop2'), fname2 = document.getElementById('fname2');
+  var GML_RE = /\.(gml|xml|citygml)$/i;
+  function fail(msg){ cerr.textContent = msg; cerr.style.display = 'block'; }
+  function check(){
+    var file = inp.files[0], extra = Array.prototype.slice.call(inp2.files);
     cerr.style.display = 'none'; go.disabled = true;
-    if (!file) { fname.style.display = 'none'; return; }
-    fname.style.display = 'block';
-    fname.textContent = file.name + '  ·  ' + (file.size/1048576).toFixed(2) + ' MB';
-    var ok = /\.(gml|xml|citygml)$/i.test(file.name);
-    if (!ok) { cerr.textContent = 'Bitte eine .gml-, .xml- oder .citygml-Datei wählen.'; cerr.style.display='block'; return; }
-    if (file.size > MAX) { cerr.textContent = 'Die Datei ist größer als {{ max_mb }} MB.'; cerr.style.display='block'; return; }
+    fname.style.display = file ? 'block' : 'none';
+    if (file) fname.textContent = file.name + '  ·  ' + (file.size/1048576).toFixed(2) + ' MB';
+    fname2.style.display = extra.length ? 'block' : 'none';
+    fname2.innerHTML = extra.map(function(x){ return x.name.replace(/[&<>]/g, '') + '  ·  ' + (x.size/1048576).toFixed(2) + ' MB'; }).join('<br>');
+    if (!file) return;
+    if (!GML_RE.test(file.name) || extra.some(function(x){ return !GML_RE.test(x.name); }))
+      return fail('Bitte nur .gml-, .xml- oder .citygml-Dateien wählen.');
+    var total = extra.reduce(function(s, x){ return s + x.size; }, file.size);
+    if (total > MAX) return fail('Die Datei(en) sind zusammen größer als {{ max_mb }} MB.');
     go.disabled = false;
   }
-  inp.addEventListener('change', function(){ pick(inp.files[0]); });
-  ['dragenter','dragover'].forEach(function(e){ drop.addEventListener(e, function(ev){ ev.preventDefault(); drop.classList.add('over'); }); });
-  ['dragleave','drop'].forEach(function(e){ drop.addEventListener(e, function(ev){ ev.preventDefault(); drop.classList.remove('over'); }); });
-  drop.addEventListener('drop', function(ev){
-    if (ev.dataTransfer.files.length) { inp.files = ev.dataTransfer.files; pick(inp.files[0]); }
-  });
+  function dropzone(zone, input){
+    ['dragenter','dragover'].forEach(function(e){ zone.addEventListener(e, function(ev){ ev.preventDefault(); zone.classList.add('over'); }); });
+    ['dragleave','drop'].forEach(function(e){ zone.addEventListener(e, function(ev){ ev.preventDefault(); zone.classList.remove('over'); }); });
+    zone.addEventListener('drop', function(ev){
+      if (ev.dataTransfer.files.length) { input.files = ev.dataTransfer.files; check(); }
+    });
+    input.addEventListener('change', check);
+  }
+  dropzone(drop, inp); dropzone(drop2, inp2);
   document.getElementById('f').addEventListener('submit', function(){
     document.getElementById('busy').classList.add('on'); go.disabled = true;
   });
-  window.addEventListener('pageshow', function(){ document.getElementById('busy').classList.remove('on'); if (inp.files[0]) pick(inp.files[0]); });
+  window.addEventListener('pageshow', function(){ document.getElementById('busy').classList.remove('on'); check(); });
 </script>
 </body>
 </html>
