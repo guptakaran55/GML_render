@@ -212,8 +212,9 @@ def analyse(name, text):
     }
 
 
-def check_files(files):
-    """files: list of (filename, gml_text); the first one is the Kubatur file."""
+def check_files(files, has_kubatur=True):
+    """files: list of (filename, gml_text); the first one is the Kubatur file
+    unless has_kubatur is False (then only each file's own bounding box is checked)."""
     results = []
     for name, text in files:
         try:
@@ -222,9 +223,9 @@ def check_files(files):
             results.append({'name': name, 'error': str(exc), 'buildings': [], 'envelopes': [],
                             'own_status': 'error', 'kub_status': 'error', 'notes': []})
 
-    kub = results[0]
+    kub = results[0] if has_kubatur else None
     ref = None
-    if not kub['error']:
+    if kub and not kub['error']:
         root_env = [e for e in kub['envelopes'] if e['root']]
         if root_env:
             e = root_env[0]
@@ -270,7 +271,7 @@ def check_files(files):
         for b in r['buildings']:
             b.pop('el', None)
             b.pop('pts', None)
-    return {'files': results, 'ref': ref, 'lbb_dups': lbb_dups,
+    return {'files': results, 'ref': ref, 'lbb_dups': lbb_dups, 'has_kubatur': has_kubatur,
             'status': 'fail' if any(r['own_status'] in ('fail', 'error') or r.get('kub_status') == 'fail'
                                     for r in results) else 'ok'}
 
@@ -299,7 +300,7 @@ def report_lines(rep):
         out.append(f"  min ({', '.join(_fmt(v, d) for v in ref['lower'])})  "
                    f"max ({', '.join(_fmt(v, d) for v in ref['upper'])})")
     for i, r in enumerate(rep['files']):
-        out.append(f"\nDATEI {i + 1}{' (Kubatur)' if i == 0 else ''}: {r['name']}")
+        out.append(f"\nDATEI {i + 1}{' (Kubatur)' if i == 0 and rep['has_kubatur'] else ''}: {r['name']}")
         if r['error']:
             out.append(f"  FEHLER beim Lesen: {r['error']}")
             continue
@@ -346,7 +347,7 @@ def report_html(rep):
         notes = list(r['notes'])
         if n_bad:
             notes.insert(0, f"{n_bad} von {len(r['buildings'])} Gebäuden nicht in der Kubatur-BBox")
-        tag = " <span class='mut'>(Kubatur)</span>" if i == 0 else ''
+        tag = " <span class='mut'>(Kubatur)</span>" if i == 0 and rep['has_kubatur'] else ''
         rows.append(f"<tr><td>{esc(r['name'])}{tag}</td>"
                     f"<td>{len(r['buildings'])}</td><td>{_badge(r['own_status'])}</td><td>{kub_cell}</td>"
                     f"<td>{'<br>'.join(esc(n) for n in notes)}</td></tr>")
@@ -381,6 +382,9 @@ def report_html(rep):
                     f"min ({', '.join(_fmt(v, dg) for v in ref['lower'])}) · "
                     f"max ({', '.join(_fmt(v, dg) for v in ref['upper'])})"
                     f"{' · nur X/Y (2D-Box)' if len(ref['lower']) == 2 else ''}</p>")
+    elif not rep['has_kubatur']:
+        ref_html = ("<p class='mut'>Keine Kubatur-Datei hochgeladen – geprüft wird nur die eigene Bounding Box "
+                    "jeder Datei. Für den Vergleich mit der Kubatur-Bounding-Box zusätzlich die Kubatur-GML hochladen.</p>")
     else:
         ref_html = "<p class='bad'>Die Kubatur-Datei liefert keine Bounding-Box – der Vergleich ist nicht möglich.</p>"
     dup_html = ''.join(

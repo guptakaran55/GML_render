@@ -100,14 +100,16 @@ def healthz():
 def process():
     _cleanup_old_results()
     f = request.files.get("gml")
+    # optional further GML files: only checked against the bounding boxes, not rendered
+    extras = [x for x in request.files.getlist("extra") if x and x.filename]
+    if (f is None or not f.filename) and extras:
+        return check_only(extras)
     if f is None or not f.filename:
         return render_template("index.html", max_mb=MAX_MB, error="Bitte eine GML-Datei auswählen."), 400
 
     raw = f.read()
     if not raw.strip():
         return render_template("index.html", max_mb=MAX_MB, error="Die Datei ist leer."), 400
-    # optional further GML files: only checked against the bounding boxes, not rendered
-    extras = [x for x in request.files.getlist("extra") if x and x.filename]
 
     t0 = time.time()
     gml_text = _decode(raw)
@@ -147,6 +149,18 @@ def process():
     print(f"[web] {f.filename}: {len(raw)/1e6:.2f} MB in {dt:.1f} s, bbox={bbox.get('status')}"
           + (f", {len(extras)} weitere Dateien geprüft: {check['status']}" if check else ""), flush=True)
     return Response(html_out, mimetype="text/html")
+
+
+def check_only(extras):
+    """No Kubatur file: check each file's own bounding box, return the report page."""
+    t0 = time.time()
+    check = gml_check.check_files([(x.filename, _decode(x.read())) for x in extras], has_kubatur=False)
+    token = uuid.uuid4().hex
+    page = gml_check.report_html(check)
+    with open(os.path.join(RESULT_DIR, token + ".report.html"), "w", encoding="utf-8") as fh:
+        fh.write(page)
+    print(f"[web] nur Prüfung: {len(extras)} Dateien in {time.time() - t0:.1f} s: {check['status']}", flush=True)
+    return Response(page, mimetype="text/html")
 
 
 @app.get("/report/<token>")

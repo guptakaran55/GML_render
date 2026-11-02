@@ -18,6 +18,7 @@
   .drop span{color:var(--mut);font-size:13px}
   .drop.small{margin-top:14px;padding:16px 18px}
   .drop.small strong{font-size:14px}
+  .hint{display:none;margin-top:10px;font-size:13px;color:var(--mut);line-height:1.45}
   .file{margin-top:14px;font-size:14px;display:none;padding:10px 12px;background:var(--acc2);border-radius:8px;word-break:break-all}
   input[type=file]{display:none}
   button{margin-top:16px;width:100%;padding:13px;border:0;border-radius:10px;background:var(--acc);color:#fff;font-size:15px;font-weight:600;cursor:pointer}
@@ -51,6 +52,7 @@
       </label>
       <input type="file" id="extra" name="extra" accept=".gml,.xml,.citygml" multiple>
       <div class="file" id="fname2"></div>
+      <div class="hint" id="hint">Ohne Kubatur-Datei wird nur die eigene Bounding Box jeder Datei geprüft. Für den Vergleich mit der Kubatur-Bounding-Box oben zusätzlich die Kubatur-GML wählen.</div>
       <div class="err" id="cerr" style="display:none;margin:14px 0 0"></div>
       <button id="go" type="submit" disabled>Berechnen</button>
     </form>
@@ -69,6 +71,7 @@
   var inp = document.getElementById('gml'), drop = document.getElementById('drop');
   var go = document.getElementById('go'), fname = document.getElementById('fname'), cerr = document.getElementById('cerr');
   var inp2 = document.getElementById('extra'), drop2 = document.getElementById('drop2'), fname2 = document.getElementById('fname2');
+  var hint = document.getElementById('hint');
   var GML_RE = /\.(gml|xml|citygml)$/i;
   function fail(msg){ cerr.textContent = msg; cerr.style.display = 'block'; }
   function check(){
@@ -78,10 +81,12 @@
     if (file) fname.textContent = file.name + '  ·  ' + (file.size/1048576).toFixed(2) + ' MB';
     fname2.style.display = extra.length ? 'block' : 'none';
     fname2.innerHTML = extra.map(function(x){ return x.name.replace(/[&<>]/g, '') + '  ·  ' + (x.size/1048576).toFixed(2) + ' MB'; }).join('<br>');
-    if (!file) return;
-    if (!GML_RE.test(file.name) || extra.some(function(x){ return !GML_RE.test(x.name); }))
+    go.textContent = file ? 'Berechnen' : 'Nur Bounding Boxen prüfen';
+    hint.style.display = (!file && extra.length) ? 'block' : 'none';
+    if (!file && !extra.length) return;
+    if ((file && !GML_RE.test(file.name)) || extra.some(function(x){ return !GML_RE.test(x.name); }))
       return fail('Bitte nur .gml-, .xml- oder .citygml-Dateien wählen.');
-    var total = extra.reduce(function(s, x){ return s + x.size; }, file.size);
+    var total = extra.reduce(function(s, x){ return s + x.size; }, file ? file.size : 0);
     if (total > MAX) return fail('Die Datei(en) sind zusammen größer als {{ max_mb }} MB.');
     go.disabled = false;
   }
