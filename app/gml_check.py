@@ -287,42 +287,6 @@ def _exceed(t, deg):
     return ' '.join(f"{'XYZ'[a]}+{_fmt(v, deg)}" for a, v in enumerate(t['max_exceed']) if v > 0)
 
 
-_TXT = {'ok': 'OK', 'fail': 'FEHLER', 'none': 'KEINE', 'error': 'LESEFEHLER'}
-
-
-def report_lines(rep):
-    """Plain-text version (appended to the log)."""
-    out = ["", "=" * 60, "BOUNDING-BOX-PRÜFUNG ÜBER ALLE DATEIEN", "=" * 60]
-    ref = rep['ref']
-    if ref:
-        d = ref['degrees']
-        out.append(f"Referenz: {ref['source']}")
-        out.append(f"  min ({', '.join(_fmt(v, d) for v in ref['lower'])})  "
-                   f"max ({', '.join(_fmt(v, d) for v in ref['upper'])})")
-    for i, r in enumerate(rep['files']):
-        out.append(f"\nDATEI {i + 1}{' (Kubatur)' if i == 0 and rep['has_kubatur'] else ''}: {r['name']}")
-        if r['error']:
-            out.append(f"  FEHLER beim Lesen: {r['error']}")
-            continue
-        out.append(f"  Gebäude: {len(r['buildings'])}  eigene BBox: {_TXT[r['own_status']]}  "
-                   f"in Kubatur-BBox: {_TXT[r['kub_status']]}")
-        for n in r['notes']:
-            out.append(f"  HINWEIS: {n}")
-        for e in r['envelopes']:
-            out.append(f"  [{'OK' if e['ok'] else 'FEHLER'}] Envelope {e['scope']}: "
-                       f"{e['n_out']}/{e['n_pts']} Punkte außerhalb {_exceed(e, r['degrees'])}"
-                       + ("  -> passt mit vertauschten X/Y!" if e['axis_swapped'] else ""))
-        for b in r['buildings']:
-            if 'kub' in b and not b['kub']['ok']:
-                out.append(f"  Gebäude {b['id']}: {_BADGE[b['kub_status']][1]} der Kubatur-BBox "
-                           f"({b['kub']['n_out']}/{b['kub']['n_pts']} Punkte, {_exceed(b['kub'], r['degrees'])})")
-    for (we, ge), v in rep['lbb_dups'].items():
-        out.append(f"\nWARNUNG: LBB {we}-{ge} ist {len({i for _, i in v})} verschiedenen Building-IDs zugeordnet:")
-        for fn, bid in v:
-            out.append(f"  {bid} in {fn}")
-    return out
-
-
 _BADGE = {'ok': ('ok', 'OK'), 'fail': ('bad', 'FEHLER'), 'none': ('mut', 'keine'), 'error': ('bad', 'Lesefehler'),
           'innerhalb': ('ok', 'innerhalb'), 'teilweise': ('bad', 'teilweise außerhalb'),
           'außerhalb': ('bad', 'außerhalb'), 'leer': ('mut', 'keine Geometrie')}
@@ -422,5 +386,5 @@ def report_html(rep):
 <div class="card">{''.join(details)}</div>
 <p class="mut">„eigene BBox“: enthalten die gml:Envelope / gml:Box der Datei alle Koordinaten der Gebäude, die sie beschreiben?
 „in Kubatur-BBox“: liegen alle Koordinaten jedes Gebäudes innerhalb der Bounding-Box der Kubatur-Datei?
-<br><a href="/">Neue Dateien prüfen</a></p>
+<br><a href="/pruefung">Neue Dateien prüfen</a> · <a href="/">3D-Kubatur</a></p>
 </div></body></html>"""
