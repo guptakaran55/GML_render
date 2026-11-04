@@ -16,6 +16,17 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 # parameter and stores it in the text field GML_file_extracted.
 FM_SCRIPT_NAME = "GML_Extrakt_speichern"
 
+# Overwrite the previous viewer right away: if the calculation below stops
+# with an error, the Web Viewer shows this message instead of an OLD model.
+out_path = os.path.join(OUTPUT_FOLDER, "gebaeude_mit_aequivalenter_kubatur.html")
+with open(out_path, 'w', encoding='utf-8') as f:
+    f.write('<!DOCTYPE html><html><head><meta charset="UTF-8"></head>'
+            '<body style="font-family:Arial;padding:40px;color:#7b241c">'
+            '<h2>GML-Berechnung nicht abgeschlossen</h2>'
+            '<p>Das Python-Script wurde gestartet, hat aber kein Ergebnis geschrieben. '
+            'Wenn diese Seite stehen bleibt, ist es mit einem Fehler abgebrochen - '
+            'bitte die Fehlermeldung des MBS-Python-Aufrufs pr&uuml;fen.</p></body></html>')
+
 # ============================================================================
 # GML DATA - Insert your CityGML XML here (FileMaker sets GML_text)
 # ============================================================================
@@ -31,6 +42,7 @@ FM_SCRIPT_NAME = "GML_Extrakt_speichern"
 # Optional: FM_SCRIPT_NAME = name of the FileMaker script that receives the
 # extracted Kubatur GML when the viewer runs inside a FileMaker Web Viewer
 # (FileMaker.PerformScript). Outside FileMaker the GML is downloaded instead.
+VIEWER_VERSION = "2026-11-04 · Teile-Auswahl + Kubatur-GML-Export"
 try:
     FM_SCRIPT_NAME
 except NameError:
@@ -2246,7 +2258,7 @@ if _addresses:
         _addr_html += f"<br>(+{len(_addresses)-4} weitere Adressen)"
 else:
     _addr_html = "Adresse: nicht im GML enthalten"
-tt = f"3D Model - {len(building_data)} Parts"
+tt = f"3D Model - {len(building_data)} Parts · Version {VIEWER_VERSION}"
 
 # --- bounding-box check panel (bottom left) ---
 _fmt = (lambda v: f"{v:.7f}") if bbox_check['degrees'] else (lambda v: f"{v:.3f}")
@@ -2543,7 +2555,6 @@ html_out = html_tpl % (_addr_html, tt, eh, _bb_html, tj, lj, amj, rmj, ptj, pmj,
 print(f"\nHTML generated: {len(html_out)/1e6:.2f} MB")
 
 
-out_path = os.path.join(OUTPUT_FOLDER, "gebaeude_mit_aequivalenter_kubatur.html")
 with open(out_path, 'w', encoding='utf-8') as f: f.write(html_out)
 print(f"\nHTML: {out_path}")
 webbrowser.open('file://' + os.path.abspath(out_path))

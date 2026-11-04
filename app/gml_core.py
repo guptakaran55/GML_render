@@ -15,6 +15,7 @@ from scipy.spatial import ConvexHull
 # Optional: FM_SCRIPT_NAME = name of the FileMaker script that receives the
 # extracted Kubatur GML when the viewer runs inside a FileMaker Web Viewer
 # (FileMaker.PerformScript). Outside FileMaker the GML is downloaded instead.
+VIEWER_VERSION = "2026-11-04 · Teile-Auswahl + Kubatur-GML-Export"
 try:
     FM_SCRIPT_NAME
 except NameError:
@@ -2230,7 +2231,7 @@ if _addresses:
         _addr_html += f"<br>(+{len(_addresses)-4} weitere Adressen)"
 else:
     _addr_html = "Adresse: nicht im GML enthalten"
-tt = f"3D Model - {len(building_data)} Parts"
+tt = f"3D Model - {len(building_data)} Parts · Version {VIEWER_VERSION}"
 
 # --- bounding-box check panel (bottom left) ---
 _fmt = (lambda v: f"{v:.7f}") if bbox_check['degrees'] else (lambda v: f"{v:.3f}")

@@ -28,6 +28,17 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 # parameter and stores it in the text field GML_file_extracted.
 FM_SCRIPT_NAME = "GML_Extrakt_speichern"
 
+# Overwrite the previous viewer right away: if the calculation below stops
+# with an error, the Web Viewer shows this message instead of an OLD model.
+out_path = os.path.join(OUTPUT_FOLDER, "gebaeude_mit_aequivalenter_kubatur.html")
+with open(out_path, 'w', encoding='utf-8') as f:
+    f.write('<!DOCTYPE html><html><head><meta charset="UTF-8"></head>'
+            '<body style="font-family:Arial;padding:40px;color:#7b241c">'
+            '<h2>GML-Berechnung nicht abgeschlossen</h2>'
+            '<p>Das Python-Script wurde gestartet, hat aber kein Ergebnis geschrieben. '
+            'Wenn diese Seite stehen bleibt, ist es mit einem Fehler abgebrochen - '
+            'bitte die Fehlermeldung des MBS-Python-Aufrufs pr&uuml;fen.</p></body></html>')
+
 # ============================================================================
 # GML DATA - Insert your CityGML XML here (FileMaker sets GML_text)
 # ============================================================================
@@ -36,7 +47,6 @@ FM_SCRIPT_NAME = "GML_Extrakt_speichern"
 
 FOOTER = '''
 
-out_path = os.path.join(OUTPUT_FOLDER, "gebaeude_mit_aequivalenter_kubatur.html")
 with open(out_path, 'w', encoding='utf-8') as f: f.write(html_out)
 print(f"\\nHTML: {out_path}")
 webbrowser.open('file://' + os.path.abspath(out_path))
