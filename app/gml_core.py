@@ -12,6 +12,13 @@ from scipy.spatial import ConvexHull
 #   html_out    -> complete viewer HTML page (string)
 #   lego_lines  -> list of FileMaker output lines
 #   bbox_check  -> dict with the GML bounding-box check result
+# Optional: FM_SCRIPT_NAME = name of the FileMaker script that receives the
+# extracted Kubatur GML when the viewer runs inside a FileMaker Web Viewer
+# (FileMaker.PerformScript). Outside FileMaker the GML is downloaded instead.
+try:
+    FM_SCRIPT_NAME
+except NameError:
+    FM_SCRIPT_NAME = "GML_Extrakt_speichern"
 try:
     GML_text
 except NameError:
@@ -2206,7 +2213,7 @@ for i, cd in enumerate(cuboid_data):
         "l":round(float(cd['length']),3),"w":round(float(cd['width']),3),"h":round(float(cd['height']),3),
         "v":round(float(cd['volume']),2),"s":int(cd['storeys']),"rt":cd.get('roof_code'),
         "rh":round(float(cd['ridge_h']),3),"rf":cd.get('roof_faces') or None})
-_export_meta = {"off":[float(v) for v in offset],"srs":_srs_name,"addr":_addresses[:1]}
+_export_meta = {"off":[float(v) for v in offset],"srs":_srs_name,"addr":_addresses[:1],"fms":FM_SCRIPT_NAME}
 ptj = json.dumps({str(k): v for k, v in _part_tr.items()}, separators=(',',':'))
 pmj = json.dumps(_part_meta, separators=(',',':')); exj = json.dumps(_export_meta, separators=(',',':'))
 
@@ -2309,7 +2316,7 @@ html_tpl = """<!DOCTYPE html><html><head><meta charset="UTF-8">
   <div class="hint" style="margin-left:0">Klick auf einen Teil im 3D-Modell (oder −) = nicht in die Kubatur übernehmen; nochmal klicken (oder +) = wieder aufnehmen. Ausgeschlossene Teile bleiben schwach sichtbar. Die NET-Kubatur und die Flächen bleiben auf alle Teile bezogen.</div>
   <div class="hdr" style="margin-top:8px">GML-Export (Kubatur)</div>
   <div class="ci"><select id="expGeom" style="font-size:12px;padding:2px;width:100%%"><option value="lod1">Quader (LoD1-Solid)</option><option value="lod2">Dachform (LoD2-Flächen)</option></select></div>
-  <button id="expBtn" type="button" style="width:100%%;padding:6px;font-size:13px;cursor:pointer;background:#1a5276;color:#fff;border:0;border-radius:4px">Kubatur-GML herunterladen</button>
+  <button id="expBtn" type="button" style="width:100%%;padding:6px;font-size:13px;cursor:pointer;background:#1a5276;color:#fff;border:0;border-radius:4px">Kubatur-GML exportieren</button>
   <div class="hint" id="expInfo" style="margin-left:0;margin-top:4px"></div>
 </details></div>
 <div class="ebox"><details><summary>Flächen / Energie</summary><div class="ebody">%s</div></details></div>
@@ -2493,6 +2500,13 @@ function exportGml(){
      '</gml:lowerCorner><gml:upperCorner>'+bmax.map(function(v){return v.toFixed(3);}).join(' ')+'</gml:upperCorner></gml:Envelope></gml:boundedBy>\\n';
   x+=bb+body+'\\n</core:CityModel>\\n';
   var fn='Kubatur'+(xmeta.addr.length?'_'+xmeta.addr[0].replace(/[^A-Za-z0-9\\u00c0-\\u017f]+/g,'_').replace(/^_+|_+$/g,''):'')+'.gml';
+  // inside a FileMaker Web Viewer: hand the GML text to a FileMaker script
+  // (it stores it in a text field); anywhere else: download it as a file
+  if(window.FileMaker&&typeof window.FileMaker.PerformScript==='function'){
+    try{window.FileMaker.PerformScript(xmeta.fms,x);
+      document.getElementById('expInfo').textContent='An FileMaker übergeben (Script \u201e'+xmeta.fms+'\u201c): '+inc.length+' Teile, '+Math.round(x.length/1024)+' kB';}
+    catch(e){alert('FileMaker-Script \u201e'+xmeta.fms+'\u201c konnte nicht ausgeführt werden: '+e);}
+    return;}
   var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([x],{type:'application/gml+xml'}));a.download=fn;
   document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);
 }

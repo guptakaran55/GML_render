@@ -79,3 +79,19 @@ the file just rendered pre-selected as Kubatur (kept on the server for 2 h like 
   can be opened in the viewer again, or used as the Kubatur file in the Bounding-Box-Prüfung.
 * GML parts without semantic surfaces (e.g. plain LoD1 solids) are now split into wall / roof /
   ground by their face normals, so such files produce cuboids too.
+
+## FileMaker
+
+`filemaker/gml_kubatur_filemaker.py` is the same calculation for FileMaker (MBS Python): FileMaker
+sets `GML_text`, the script writes the viewer HTML to `OUTPUT_FOLDER`. It is generated from
+`app/gml_core.py` - after changing the core run `python filemaker/build_filemaker_script.py`.
+
+Storing the extracted Kubatur GML in FileMaker:
+
+1. Field `GML_file_extracted`: type **Text**.
+2. Script **`GML_Extrakt_speichern`** (name = `FM_SCRIPT_NAME` in the Python file):
+   `Set Field [ <Table>::GML_file_extracted ; Get ( ScriptParameter ) ]`, `Commit Records/Requests [ No dialog ]`.
+3. Web Viewer setup: tick **"Allow JavaScript to perform FileMaker scripts"** (FileMaker 19+).
+
+In the viewer, "Kubatur-GML exportieren" then calls `FileMaker.PerformScript("GML_Extrakt_speichern", <GML text>)`
+for the record shown in the Web Viewer. Outside FileMaker (web app, browser) the button downloads the file instead.
