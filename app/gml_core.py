@@ -2281,7 +2281,7 @@ if _adj_keys:
         eh += f"Teil {_key[0]}–{_key[1]}: {_ao:.1f} / {_ar:.1f} m²{_mark}<br>"
 html_tpl = """<!DOCTYPE html><html><head><meta charset="UTF-8">
 <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-<style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%%;height:100%%;overflow:hidden;background:#f8f9fa;font-family:Arial}#plotDiv{position:absolute;top:0;left:0;width:100%%;height:100%%}.title{position:fixed;bottom:8px;left:50%%;transform:translateX(-50%%);z-index:1000;background:rgba(255,255,255,0.92);padding:6px 14px;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,0.18);pointer-events:none;text-align:center;max-width:34vw}.title .addr{font-size:14px;font-weight:bold;color:#1a1a1a;line-height:1.35}.title .sub{font-size:11px;color:#666;margin-top:2px}.cbox{position:fixed;right:16px;top:16px;z-index:1000;background:rgba(255,255,255,0.96);padding:14px;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,0.2);min-width:230px;max-height:90vh;overflow-y:auto}.ci{margin-bottom:8px;display:flex;align-items:center;cursor:pointer}.ci:last-child{margin-bottom:0}.ci input{width:18px;height:18px;margin-right:8px;cursor:pointer;flex-shrink:0}.ci label{font-size:13px;cursor:pointer}.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}.sep{border-top:1px solid #ccc;margin:10px 0 8px 0}.hdr{font-size:11px;color:#666;font-weight:bold;text-transform:uppercase;margin-bottom:6px;letter-spacing:0.5px}.ebox{position:fixed;bottom:16px;right:16px;z-index:1000;background:rgba(255,255,255,0.95);padding:10px 14px;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,0.2);font-size:12px;line-height:1.6;max-width:30vw}.ebox b{display:block;margin-bottom:4px;color:#1a5276}details>summary{list-style:none;cursor:pointer;user-select:none;font-weight:bold;font-size:13px;color:#1a5276;display:flex;align-items:center;gap:6px}details>summary::-webkit-details-marker{display:none}details>summary:before{content:'\\25B8';display:inline-block;transition:transform .15s;color:#888}details[open]>summary:before{transform:rotate(90deg)}details[open]>summary{margin-bottom:10px}.ebox .ebody{max-height:55vh;overflow-y:auto}.hint{font-size:11px;color:#888;margin:-2px 0 8px 26px}.bbox{position:fixed;bottom:16px;left:16px;z-index:1001;background:rgba(255,255,255,0.97);padding:10px 14px;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,0.2);font-size:12px;line-height:1.5;max-width:30vw;border-left:6px solid #999}.bbox.bbok{border-left-color:#1e8449}.bbox.bbok summary{color:#1e8449}.bbox.bbfail{border-left-color:#c0392b}.bbox.bbfail summary{color:#c0392b}.bbox.bbnone{border-left-color:#b9770e}.bbox.bbnone summary{color:#9a6400}.bbox .bbbody{max-height:45vh;overflow-y:auto}.bbrow{padding:6px 0;border-top:1px solid #eee}.bbrow:first-child{border-top:0}.mut{color:#888;font-size:11px}.badt{color:#c0392b}.prow{display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px}.prow button{width:22px;height:22px;border:1px solid #999;border-radius:4px;background:#fff;cursor:pointer;font-weight:bold;font-size:14px;line-height:1;flex-shrink:0}.prow.off{opacity:.5}.prow.off .pn{text-decoration:line-through}.prow .pd{color:#888;font-size:11px}@media (max-width:800px){.bbox,.ebox{max-width:calc(100vw - 32px)}.title{display:none}}</style></head><body>
+<style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%%;height:100%%;overflow:hidden;background:#f8f9fa;font-family:Arial}#plotDiv{position:absolute;top:0;left:0;width:100%%;height:100%%}.title{position:fixed;bottom:8px;left:50%%;transform:translateX(-50%%);z-index:1000;background:rgba(255,255,255,0.92);padding:6px 14px;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,0.18);pointer-events:none;text-align:center;max-width:34vw}.title .addr{font-size:14px;font-weight:bold;color:#1a1a1a;line-height:1.35}.title .sub{font-size:11px;color:#666;margin-top:2px}.cbox{position:fixed;right:16px;top:16px;z-index:1000;background:rgba(255,255,255,0.96);padding:14px;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,0.2);min-width:230px;max-width:300px;max-height:90vh;overflow-y:auto}.ci{margin-bottom:8px;display:flex;align-items:center;cursor:pointer}.ci:last-child{margin-bottom:0}.ci input{width:18px;height:18px;margin-right:8px;cursor:pointer;flex-shrink:0}.ci label{font-size:13px;cursor:pointer}.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}.sep{border-top:1px solid #ccc;margin:10px 0 8px 0}.hdr{font-size:11px;color:#666;font-weight:bold;text-transform:uppercase;margin-bottom:6px;letter-spacing:0.5px}.ebox{position:fixed;bottom:16px;right:16px;z-index:1000;background:rgba(255,255,255,0.95);padding:10px 14px;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,0.2);font-size:12px;line-height:1.6;max-width:30vw}.ebox b{display:block;margin-bottom:4px;color:#1a5276}details>summary{list-style:none;cursor:pointer;user-select:none;font-weight:bold;font-size:13px;color:#1a5276;display:flex;align-items:center;gap:6px}details>summary::-webkit-details-marker{display:none}details>summary:before{content:'\\25B8';display:inline-block;transition:transform .15s;color:#888}details[open]>summary:before{transform:rotate(90deg)}details[open]>summary{margin-bottom:10px}.ebox .ebody{max-height:55vh;overflow-y:auto}.hint{font-size:11px;color:#888;margin:-2px 0 8px 26px}.bbox{position:fixed;bottom:16px;left:16px;z-index:1001;background:rgba(255,255,255,0.97);padding:10px 14px;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,0.2);font-size:12px;line-height:1.5;max-width:30vw;border-left:6px solid #999}.bbox.bbok{border-left-color:#1e8449}.bbox.bbok summary{color:#1e8449}.bbox.bbfail{border-left-color:#c0392b}.bbox.bbfail summary{color:#c0392b}.bbox.bbnone{border-left-color:#b9770e}.bbox.bbnone summary{color:#9a6400}.bbox .bbbody{max-height:45vh;overflow-y:auto}.bbrow{padding:6px 0;border-top:1px solid #eee}.bbrow:first-child{border-top:0}.mut{color:#888;font-size:11px}.badt{color:#c0392b}.prow{display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px}.prow button{width:22px;height:22px;border:1px solid #999;border-radius:4px;background:#fff;cursor:pointer;font-weight:bold;font-size:14px;line-height:1;flex-shrink:0}.prow.off{opacity:.5}.prow.sel{background:#eaf2fb;outline:1px solid #9cc3e6;border-radius:4px}.prow .pn{cursor:pointer}.prow.off .pn{text-decoration:line-through}.prow .pd{color:#888;font-size:11px}@media (max-width:800px){.bbox,.ebox{max-width:calc(100vw - 32px)}.title{display:none}}</style></head><body>
 <div class="title"><div class="addr">%s</div><div class="sub">%s</div></div><div id="plotDiv"></div>
 <div class="cbox"><details open><summary>Ansicht</summary>
   <div class="hdr">Kubaturen</div>
@@ -2293,9 +2293,9 @@ html_tpl = """<!DOCTYPE html><html><head><meta charset="UTF-8">
   <div class="ci"><input type="checkbox" id="showBBox"/><label for="showBBox"><span class="sw" style="background:#1e8449"></span>GML-Bounding-Box prüfen</label></div>
   <div class="sep"></div>
   <div class="hdr">Beschriftung</div>
-  <div class="ci"><input type="checkbox" id="showLbl" checked/><label for="showLbl">Abmessungen &amp; Dachtyp</label></div>
+  <div class="ci"><input type="checkbox" id="showLbl"/><label for="showLbl">Abmessungen &amp; Dachtyp</label></div>
   <div class="ci"><input type="checkbox" id="showRef"/><label for="showRef"><span class="sw" style="background:magenta"></span>Referenzkanten</label></div>
-  <div class="hint">gilt für die aktuelle Ansicht und alle in der Legende sichtbaren Teile</div>
+  <div class="hint">gilt für die aktuelle Ansicht und alle in der Legende sichtbaren Teile; der zuletzt angeklickte Teil wird immer beschriftet</div>
   <div class="sep"></div>
   <div class="hdr">Flächen (3D)</div>
   <div class="ci"><input type="checkbox" id="showSrfFas"/><label for="showSrfFas"><span class="sw" style="background:deepskyblue"></span>Fassadenfläche</label></div>
@@ -2306,7 +2306,7 @@ html_tpl = """<!DOCTYPE html><html><head><meta charset="UTF-8">
   <div class="sep"></div>
   <div class="hdr">Teile – Auswahl</div>
   <div id="partList"></div>
-  <div class="hint" style="margin-left:0">− = Teil nicht in die Kubatur übernehmen, + = wieder aufnehmen. Die NET-Kubatur und die Flächen bleiben auf alle Teile bezogen.</div>
+  <div class="hint" style="margin-left:0">Klick auf einen Teil im 3D-Modell (oder −) = nicht in die Kubatur übernehmen; nochmal klicken (oder +) = wieder aufnehmen. Ausgeschlossene Teile bleiben schwach sichtbar. Die NET-Kubatur und die Flächen bleiben auf alle Teile bezogen.</div>
   <div class="hdr" style="margin-top:8px">GML-Export (Kubatur)</div>
   <div class="ci"><select id="expGeom" style="font-size:12px;padding:2px;width:100%%"><option value="lod1">Quader (LoD1-Solid)</option><option value="lod2">Dachform (LoD2-Flächen)</option></select></div>
   <button id="expBtn" type="button" style="width:100%%;padding:6px;font-size:13px;cursor:pointer;background:#1a5276;color:#fff;border:0;border-radius:4px">Kubatur-GML herunterladen</button>
@@ -2357,12 +2357,13 @@ function updAnn(){
     var md=curMode(), lab=document.getElementById('showLbl').checked, rf=document.getElementById('showRef').checked;
     var an=gd.layout.scene.annotations||[], u={}, ch=false;
     for(var a=0;a<am.length;a++){
-      var v=lab&&am[a].md===md&&isOn(am[a].tr);
+      var ap=ptr[am[a].tr];
+      var v=am[a].md===md&&isOn(am[a].tr)&&((lab&&!exOf(am[a].tr))||(ap!==undefined&&ap===selP));
       if(!!an[a].visible!==v){u['scene.annotations['+a+'].visible']=v;ch=true;}
     }
     if(ch)Plotly.relayout(gd,u);
     var on=[],off=[];
-    rmeta.forEach(function(r){var w=rf&&isOn(r.own[md]);if(isOn(r.tr)!==w)(w?on:off).push(r.tr);});
+    rmeta.forEach(function(r){var w=rf&&isOn(r.own[md])&&!exOf(r.tr);if(isOn(r.tr)!==w)(w?on:off).push(r.tr);});
     if(on.length)Plotly.restyle(gd,'visible',true,on);
     if(off.length)Plotly.restyle(gd,'visible',false,off);
   }finally{busy=false;}
@@ -2374,14 +2375,16 @@ function updOrig(){
   var md=document.querySelector('input[name=kubmode]:checked'); md=md?md.id:'kubOff';
   var op=((on||sh)&&(md==='kubPer'||md==='kubRoof'))?0.4:1.0;
   var rm=kt.concat(kr).filter(function(i){return t[i].type==='mesh3d';});
-  if(rm.length)Plotly.restyle('plotDiv',{'opacity':op},rm);
-  if(bmesh.length)Plotly.restyle('plotDiv',{'opacity':sh?0.25:1.0},bmesh);
+  if(rm.length)Plotly.restyle('plotDiv',{'opacity':rm.map(function(i){return exOf(i)?GHOST:op;})},rm);
+  if(bmesh.length)Plotly.restyle('plotDiv',{'opacity':bmesh.map(function(i){return exOf(i)?GHOST:(sh?0.25:1.0);})},bmesh);
 }
-// an excluded Teil stays hidden whatever the view / checkboxes say
+// an excluded Teil: its solids stay as a faint ghost (still clickable to take
+// it back), its edges / wireframe / reference edge / label are hidden
+var GHOST=0.12, selP=null, armed=false;
 function exOf(i){var p=ptr[i];return p!==undefined&&!!excl[p];}
 function setVis(idxs,vis){
   if(idxs.length===0)return;
-  Plotly.restyle('plotDiv','visible',idxs.map(function(i){return vis&&!exOf(i);}),idxs);
+  Plotly.restyle('plotDiv','visible',idxs.map(function(i){return vis&&!(exOf(i)&&t[i].type!=='mesh3d');}),idxs);
 }
 function applyMode(md,user){
   if(md==='kubOff'){setVis(kr,false);setVis(kt,false);setVis(ktnet,false);setVis(bmesh,true);}
@@ -2395,18 +2398,17 @@ document.getElementById('showRef').addEventListener('change',updAnn);
 ['kubOff','kubPer','kubNet','kubRoof'].forEach(function(id){
   document.getElementById(id).addEventListener('change',function(){if(this.checked)applyMode(id,true);});});
 // ---- Teile: exclude / include ----
-var legIdx={};
-Object.keys(ptr).forEach(function(k){var i=+k;if(t[i].showlegend===true){(legIdx[ptr[k]]=legIdx[ptr[k]]||[]).push(i);}});
 function nIncl(){return pmeta.filter(function(m){return !excl[m.p];}).length;}
 function renderParts(){
   var el=document.getElementById('partList');el.innerHTML='';
   pmeta.forEach(function(m){
-    var r=document.createElement('div');r.className='prow'+(excl[m.p]?' off':'');
+    var r=document.createElement('div');r.className='prow'+(excl[m.p]?' off':'')+(m.p===selP?' sel':'');
     var b=document.createElement('button');b.type='button';b.textContent=excl[m.p]?'+':'\u2212';
     b.title=excl[m.p]?'Teil wieder aufnehmen':'Teil ausschließen';
     b.addEventListener('click',function(){togglePart(m.p);});
     var sw=document.createElement('span');sw.className='sw';sw.style.background=m.clr;
-    var n=document.createElement('span');n.className='pn';n.textContent='Teil '+m.p;
+    var n=document.createElement('span');n.className='pn';n.textContent='Teil '+m.p;n.title='Teil beschriften';
+    n.addEventListener('click',function(){selP=(selP===m.p)?null:m.p;renderParts();updAnn();});
     var d=document.createElement('span');d.className='pd';
     d.textContent=m.l.toFixed(1)+'\u00d7'+m.w.toFixed(1)+'\u00d7'+m.h.toFixed(1)+' m';
     r.appendChild(b);r.appendChild(sw);r.appendChild(n);r.appendChild(d);el.appendChild(r);});
@@ -2414,10 +2416,18 @@ function renderParts(){
   document.getElementById('expInfo').textContent=nIncl()+' von '+pmeta.length+' Teilen im Export'+(ex?' ('+ex+' ausgeschlossen)':'');
 }
 function togglePart(p){
-  excl[p]=!excl[p];
-  if(legIdx[p])Plotly.restyle(gd,{showlegend:!excl[p]},legIdx[p]);
+  excl[p]=!excl[p];selP=p;
   applyMode(curMode(),false);renderParts();
 }
+// click on a Teil in the 3D view (building, Quader or Dachform) = -/+
+gd.on('plotly_click',function(ev){
+  if(!ev||!ev.points||!ev.points.length)return;
+  var p=ptr[ev.points[0].curveNumber];
+  if(p===undefined||!pmeta.some(function(m){return m.p===p;}))return;
+  if(!armed)return; armed=false;              // Plotly repeats the event while the button is held
+  setTimeout(function(){togglePart(p);},0);   // not inside Plotly's render callback
+});
+gd.addEventListener('pointerdown',function(){armed=true;},true);
 // ---- Kubatur GML (CityGML 2.0) of the included Teile ----
 function xe(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 var off=xmeta.off,bmin=null,bmax=null;

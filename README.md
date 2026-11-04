@@ -62,10 +62,13 @@ the file just rendered pre-selected as Kubatur (kept on the server for 2 h like 
 
 ## Teile ausschließen + Kubatur-GML (3D-Kubatur viewer)
 
-* Panel "Teile – Auswahl" in the viewer: one row per Teil with a **−** button. A Teil marked
-  with − is hidden in every view (building, Quader, Dachform, labels, reference edge, original
-  wireframe) and removed from the legend; **+** takes it back. The NET-Kubatur and the area
-  figures are still computed from all Teile.
+* **Click a Teil in the 3D view** (building, Quader or Dachform) to exclude it, click again to
+  take it back; the panel "Teile – Auswahl" has the same as a **−/+** button per Teil. An
+  excluded Teil stays as a faint ghost (opacity 0.12, still clickable); its edges, wireframe,
+  reference edge and label are hidden. The NET-Kubatur and the area figures are still computed
+  from all Teile.
+* "Abmessungen & Dachtyp" labels are off by default; the last clicked Teil is always labelled
+  (clicking a Teil's name in the panel labels it without toggling it).
 * "Kubatur-GML herunterladen" writes a CityGML 2.0 file in the browser containing only the
   Teile that are still included, in the original coordinates and SRS:
   * **Quader (LoD1-Solid)**: one `lod1Solid` cuboid per Teil.
