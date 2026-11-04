@@ -435,7 +435,21 @@ for _idx, _unit in enumerate(_units):
         'closure': _surfs.get('closure', []),
     }
     if _surfs.get('other'):
-        surfs['walls'].extend(_surfs['other'])
+        if surfs['roofs'] or surfs['ground']:
+            surfs['walls'].extend(_surfs['other'])
+        else:
+            # no semantic surfaces at all (e.g. a plain LoD1 solid): classify by
+            # the face normal - horizontal at the lowest level = ground, other
+            # horizontal / sloped = roof, (near) vertical = wall
+            _oz = min(float(np.asarray(_o)[:, 2].min()) for _o in _surfs['other'])
+            for _o in _surfs['other']:
+                _oa = np.asarray(_o, dtype=float); _onw = np.zeros(3)
+                for _q in range(len(_oa)): _onw += np.cross(_oa[_q], _oa[(_q+1) % len(_oa)])
+                _onl = float(np.linalg.norm(_onw))
+                _onz = abs(_onw[2]) / _onl if _onl > 1e-12 else 0.0
+                if _onz < 0.3: surfs['walls'].append(_o)
+                elif _onz > 0.95 and float(_oa[:, 2].max()) < _oz + 0.05: surfs['ground'].append(_o)
+                else: surfs['roofs'].append(_o)
 
     ac = []
     for sl in surfs.values(): ac.extend(sl)
@@ -1336,6 +1350,7 @@ for bd in building_data:
     # pieces -> world coords -> one mesh + feature edges (no def, plain loops)
     _rX=[]; _rY=[]; _rZ=[]; _rI=[]; _rJ=[]; _rK=[]
     _eX=[]; _eY=[]; _eZ=[]
+    _rF = []        # planar faces [kind, ring] for the Kubatur-GML export (outward ring order)
     _rvol = 0.0
     for _pc in _pieces:
         _P = np.array(_pc, dtype=float)
@@ -1351,6 +1366,18 @@ for bd in building_data:
         _rI.extend((_hpc.simplices[:,0] + _o).tolist())
         _rJ.extend((_hpc.simplices[:,1] + _o).tolist())
         _rK.extend((_hpc.simplices[:,2] + _o).tolist())
+        # coplanar hull facets -> one convex polygon each (outward normal = hull equation)
+        _fgrp = {}
+        for _f in range(len(_hpc.simplices)):
+            _fk = tuple(np.round(_hpc.equations[_f], 4))
+            _fgrp.setdefault(_fk, set()).update(int(_v) for _v in _hpc.simplices[_f])
+        for _fk, _fv in _fgrp.items():
+            _fn = np.array(_fk[:3]); _fP = _Wp[sorted(_fv)]; _fc = _fP.mean(0)
+            _fu = _fP[0] - _fc; _fu = _fu / (np.linalg.norm(_fu) + 1e-12); _fw = np.cross(_fn, _fu)
+            _fang = np.arctan2((_fP - _fc) @ _fw, (_fP - _fc) @ _fu)
+            _fring = _fP[np.argsort(_fang)]
+            _fkind = 'WallSurface' if abs(_fn[2]) < 0.15 else ('GroundSurface' if _fn[2] < -0.9 else 'RoofSurface')
+            _rF.append([_fkind, np.round(_fring, 3).tolist()])
         _nq = _hpc.equations[:, :3]
         for _f in range(len(_hpc.simplices)):
             for _v in range(3):
@@ -1374,6 +1401,12 @@ for bd in building_data:
                 _rX.append(float(_pl['pts'][_q][0])); _rY.append(float(_pl['pts'][_q][1])); _rZ.append(float(_pl['pts'][_q][2]))
             for _tr in _pl['tris']:
                 _rI.append(_tr[0] + _o); _rJ.append(_tr[1] + _o); _rK.append(_tr[2] + _o)
+            _fkind = {'roofs':'RoofSurface','ground':'GroundSurface'}.get(_pl['kind'], 'WallSurface')
+            _fring = np.asarray(_pl['pts'], dtype=float)
+            _fnw = np.zeros(3)
+            for _q in range(len(_fring)): _fnw += np.cross(_fring[_q], _fring[(_q+1) % len(_fring)])
+            if float(_fnw @ np.asarray(_pl['n'])) < 0: _fring = _fring[::-1]
+            _rF.append([_fkind, np.round(_fring, 3).tolist()])
             for _q in range(_np_):
                 _pq = _pl['pts'][_q]; _pr = _pl['pts'][(_q+1) % _np_]
                 _eX.extend([float(_pq[0]), float(_pr[0]), None])
@@ -1391,7 +1424,7 @@ for bd in building_data:
         'roof_code':_rt_code,'roof_name':_rt_name,'roof_label':_rt_label,
         'eave_h':_H_eave,'ridge_h':_H_ridge,'ridge_along':('W' if _swap else 'L'),
         'roof_mode':_roof_mode,'roof_vol':_rvol,
-        'roof_mesh':(_rX,_rY,_rZ,_rI,_rJ,_rK),'roof_edges':(_eX,_eY,_eZ)})
+        'roof_mesh':(_rX,_rY,_rZ,_rI,_rJ,_rK),'roof_edges':(_eX,_eY,_eZ),'roof_faces':_rF})
 
 # ===================================================================
 # KEEP NEIGHBOURS CONNECTED  (thermal-zone adjacency of the reconstruction)
@@ -2069,8 +2102,9 @@ if building_data and building_data[0]['bbox']:
 # For comparing the reconstruction (Quader / Dachform) with the true geometry.
 # LIGHT OUTPUT: one trace, coordinates packed as base64 float32 (x|y|z), NaN
 # between rings = line break; consecutive duplicate points dropped.
-_wf = []
+# One trace per Teil, so an excluded Teil can be hidden here as well.
 for bd in building_data:
+    _wf = []
     for _sl in bd['surfaces'].values():
         for _sf in _sl:
             _r = np.round(np.asarray(_sf, dtype=float), 3)
@@ -2080,9 +2114,9 @@ for bd in building_data:
             if len(_r) < 3: continue
             if np.any(_r[0] != _r[-1]): _r = np.vstack([_r, _r[:1]])
             _wf.append(_r); _wf.append(np.full((1, 3), np.nan))
-if _wf:
+    if not _wf: continue
     _WF = np.vstack(_wf)
-    traces.append({"type":"scatter3d","mode":"lines","name":"Original GML","legendgroup":"origwf",
+    traces.append({"type":"scatter3d","mode":"lines","name":f"Original GML Teil {bd['idx']}","legendgroup":f"origwf{bd['idx']}",
         "line":{"color":"#111111","width":3},"showlegend":False,"visible":False,"hoverinfo":"skip",
         "_bl":[base64.b64encode(_WF.T.astype('<f4').tobytes()).decode('ascii'), int(len(_WF))]})
 
@@ -2142,6 +2176,39 @@ for _vx,_vy,_vz,_ti,_tj,_tk,_oclr,_onm,_olg in (
         "_b":[base64.b64encode(_OU.T.astype('<f4').tobytes()).decode('ascii'),
               base64.b64encode(_OF.T.astype('<u4').tobytes()).decode('ascii'),
               int(len(_OU)), int(len(_OF))]})
+
+# --- PART SELECTION (exclude a Teil) + KUBATUR-GML EXPORT ---
+# _part_tr: trace index -> Teil it belongs to (building mesh, Quader, Dachform,
+# reference edge, original wireframe). The JS hides every trace of an excluded
+# Teil in all views. _part_meta carries what the browser needs to write the
+# Kubatur GML of the remaining Teile (geometry is read from the traces).
+_part_tr = {}
+for _pti, _ptr in enumerate(traces):
+    _pm = re.match(r'(kubatur|dachform|ref|origwf)(\d+)$', _ptr.get('legendgroup', ''))
+    if _pm: _part_tr[_pti] = int(_pm.group(2))
+for _pidx, _pti in _bm_idx.items(): _part_tr[_pti] = _pidx
+_srs_name = None
+for _el in root.iter():
+    for _an, _av in _el.attrib.items():
+        if (_an.split('}',1)[1] if '}' in _an else _an).lower() == 'srsname': _srs_name = _av; break
+    if _srs_name: break
+_part_meta = []
+for i, cd in enumerate(cuboid_data):
+    _u = _units[cd['part_idx'] - 1]; _par = _unit_parent.get(id(_u))
+    _uid = None; _pid = None
+    for _an, _av in _u.attrib.items():
+        if (_an.split('}',1)[1] if '}' in _an else _an) == 'id': _uid = _av
+    if _par is not None:
+        for _an, _av in _par.attrib.items():
+            if (_an.split('}',1)[1] if '}' in _an else _an) == 'id': _pid = _av
+    _part_meta.append({"p":cd['part_idx'],"id":_uid,"pid":_pid,"kt":_kt_idx.get(cd['part_idx']),
+        "kr":_kr_idx.get(cd['part_idx']),"clr":bcolors[(cd['part_idx']-1)%len(bcolors)],
+        "l":round(float(cd['length']),3),"w":round(float(cd['width']),3),"h":round(float(cd['height']),3),
+        "v":round(float(cd['volume']),2),"s":int(cd['storeys']),"rt":cd.get('roof_code'),
+        "rh":round(float(cd['ridge_h']),3),"rf":cd.get('roof_faces') or None})
+_export_meta = {"off":[float(v) for v in offset],"srs":_srs_name,"addr":_addresses[:1]}
+ptj = json.dumps({str(k): v for k, v in _part_tr.items()}, separators=(',',':'))
+pmj = json.dumps(_part_meta, separators=(',',':')); exj = json.dumps(_export_meta, separators=(',',':'))
 
 layout = {"scene":{"xaxis":{"title":"X [m]"},"yaxis":{"title":"Y [m]"},"zaxis":{"title":"Z [m]"},"aspectmode":"data","camera":{"eye":{"x":1.5,"y":1.5,"z":1.2}}},"margin":{"l":0,"r":0,"t":0,"b":0},"hovermode":"closest","legend":{"x":0.0,"y":1.0,"xanchor":"left","yanchor":"top","bgcolor":"rgba(255,255,255,0.95)","bordercolor":"rgba(0,0,0,0.3)","borderwidth":1,"font":{"size":11},"itemwidth":30,"tracegroupgap":2},"updatemenus":[{"type":"buttons","direction":"right","x":0.5,"y":1.02,"xanchor":"center","yanchor":"bottom","buttons":[{"label":"Top","method":"relayout","args":[{"scene.camera.eye":{"x":0,"y":0,"z":2.5}}]},{"label":"Front","method":"relayout","args":[{"scene.camera.eye":{"x":0,"y":-2.5,"z":0}}]},{"label":"Right","method":"relayout","args":[{"scene.camera.eye":{"x":2.5,"y":0,"z":0}}]},{"label":"Iso","method":"relayout","args":[{"scene.camera.eye":{"x":1.5,"y":1.5,"z":1.2}}]}],"pad":{"r":10,"t":10},"showactive":True,"bgcolor":"lightblue","font":{"size":11}}]}
 layout["scene"]["annotations"] = scene_ann
@@ -2214,7 +2281,7 @@ if _adj_keys:
         eh += f"Teil {_key[0]}–{_key[1]}: {_ao:.1f} / {_ar:.1f} m²{_mark}<br>"
 html_tpl = """<!DOCTYPE html><html><head><meta charset="UTF-8">
 <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-<style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%%;height:100%%;overflow:hidden;background:#f8f9fa;font-family:Arial}#plotDiv{position:absolute;top:0;left:0;width:100%%;height:100%%}.title{position:fixed;bottom:8px;left:50%%;transform:translateX(-50%%);z-index:1000;background:rgba(255,255,255,0.92);padding:6px 14px;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,0.18);pointer-events:none;text-align:center;max-width:34vw}.title .addr{font-size:14px;font-weight:bold;color:#1a1a1a;line-height:1.35}.title .sub{font-size:11px;color:#666;margin-top:2px}.cbox{position:fixed;right:16px;top:16px;z-index:1000;background:rgba(255,255,255,0.96);padding:14px;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,0.2);min-width:230px;max-height:90vh;overflow-y:auto}.ci{margin-bottom:8px;display:flex;align-items:center;cursor:pointer}.ci:last-child{margin-bottom:0}.ci input{width:18px;height:18px;margin-right:8px;cursor:pointer;flex-shrink:0}.ci label{font-size:13px;cursor:pointer}.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}.sep{border-top:1px solid #ccc;margin:10px 0 8px 0}.hdr{font-size:11px;color:#666;font-weight:bold;text-transform:uppercase;margin-bottom:6px;letter-spacing:0.5px}.ebox{position:fixed;bottom:16px;right:16px;z-index:1000;background:rgba(255,255,255,0.95);padding:10px 14px;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,0.2);font-size:12px;line-height:1.6;max-width:30vw}.ebox b{display:block;margin-bottom:4px;color:#1a5276}details>summary{list-style:none;cursor:pointer;user-select:none;font-weight:bold;font-size:13px;color:#1a5276;display:flex;align-items:center;gap:6px}details>summary::-webkit-details-marker{display:none}details>summary:before{content:'\\25B8';display:inline-block;transition:transform .15s;color:#888}details[open]>summary:before{transform:rotate(90deg)}details[open]>summary{margin-bottom:10px}.ebox .ebody{max-height:55vh;overflow-y:auto}.hint{font-size:11px;color:#888;margin:-2px 0 8px 26px}.bbox{position:fixed;bottom:16px;left:16px;z-index:1001;background:rgba(255,255,255,0.97);padding:10px 14px;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,0.2);font-size:12px;line-height:1.5;max-width:30vw;border-left:6px solid #999}.bbox.bbok{border-left-color:#1e8449}.bbox.bbok summary{color:#1e8449}.bbox.bbfail{border-left-color:#c0392b}.bbox.bbfail summary{color:#c0392b}.bbox.bbnone{border-left-color:#b9770e}.bbox.bbnone summary{color:#9a6400}.bbox .bbbody{max-height:45vh;overflow-y:auto}.bbrow{padding:6px 0;border-top:1px solid #eee}.bbrow:first-child{border-top:0}.mut{color:#888;font-size:11px}.badt{color:#c0392b}@media (max-width:800px){.bbox,.ebox{max-width:calc(100vw - 32px)}.title{display:none}}</style></head><body>
+<style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%%;height:100%%;overflow:hidden;background:#f8f9fa;font-family:Arial}#plotDiv{position:absolute;top:0;left:0;width:100%%;height:100%%}.title{position:fixed;bottom:8px;left:50%%;transform:translateX(-50%%);z-index:1000;background:rgba(255,255,255,0.92);padding:6px 14px;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,0.18);pointer-events:none;text-align:center;max-width:34vw}.title .addr{font-size:14px;font-weight:bold;color:#1a1a1a;line-height:1.35}.title .sub{font-size:11px;color:#666;margin-top:2px}.cbox{position:fixed;right:16px;top:16px;z-index:1000;background:rgba(255,255,255,0.96);padding:14px;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,0.2);min-width:230px;max-height:90vh;overflow-y:auto}.ci{margin-bottom:8px;display:flex;align-items:center;cursor:pointer}.ci:last-child{margin-bottom:0}.ci input{width:18px;height:18px;margin-right:8px;cursor:pointer;flex-shrink:0}.ci label{font-size:13px;cursor:pointer}.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}.sep{border-top:1px solid #ccc;margin:10px 0 8px 0}.hdr{font-size:11px;color:#666;font-weight:bold;text-transform:uppercase;margin-bottom:6px;letter-spacing:0.5px}.ebox{position:fixed;bottom:16px;right:16px;z-index:1000;background:rgba(255,255,255,0.95);padding:10px 14px;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,0.2);font-size:12px;line-height:1.6;max-width:30vw}.ebox b{display:block;margin-bottom:4px;color:#1a5276}details>summary{list-style:none;cursor:pointer;user-select:none;font-weight:bold;font-size:13px;color:#1a5276;display:flex;align-items:center;gap:6px}details>summary::-webkit-details-marker{display:none}details>summary:before{content:'\\25B8';display:inline-block;transition:transform .15s;color:#888}details[open]>summary:before{transform:rotate(90deg)}details[open]>summary{margin-bottom:10px}.ebox .ebody{max-height:55vh;overflow-y:auto}.hint{font-size:11px;color:#888;margin:-2px 0 8px 26px}.bbox{position:fixed;bottom:16px;left:16px;z-index:1001;background:rgba(255,255,255,0.97);padding:10px 14px;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,0.2);font-size:12px;line-height:1.5;max-width:30vw;border-left:6px solid #999}.bbox.bbok{border-left-color:#1e8449}.bbox.bbok summary{color:#1e8449}.bbox.bbfail{border-left-color:#c0392b}.bbox.bbfail summary{color:#c0392b}.bbox.bbnone{border-left-color:#b9770e}.bbox.bbnone summary{color:#9a6400}.bbox .bbbody{max-height:45vh;overflow-y:auto}.bbrow{padding:6px 0;border-top:1px solid #eee}.bbrow:first-child{border-top:0}.mut{color:#888;font-size:11px}.badt{color:#c0392b}.prow{display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px}.prow button{width:22px;height:22px;border:1px solid #999;border-radius:4px;background:#fff;cursor:pointer;font-weight:bold;font-size:14px;line-height:1;flex-shrink:0}.prow.off{opacity:.5}.prow.off .pn{text-decoration:line-through}.prow .pd{color:#888;font-size:11px}@media (max-width:800px){.bbox,.ebox{max-width:calc(100vw - 32px)}.title{display:none}}</style></head><body>
 <div class="title"><div class="addr">%s</div><div class="sub">%s</div></div><div id="plotDiv"></div>
 <div class="cbox"><details open><summary>Ansicht</summary>
   <div class="hdr">Kubaturen</div>
@@ -2236,11 +2303,19 @@ html_tpl = """<!DOCTYPE html><html><head><meta charset="UTF-8">
   <div class="ci"><input type="checkbox" id="showSrfShared"/><label for="showSrfShared"><span class="sw" style="background:crimson"></span>Gemeinsame Fläche (Original-GML)</label></div>
   <div class="ci"><input type="checkbox" id="showSrfRek"/><label for="showSrfRek"><span class="sw" style="background:#7b2cbf"></span>Gemeinsame Fläche (Rekonstruktion)</label></div>
   <div class="ci"><input type="checkbox" id="showSrfSouth"/><label for="showSrfSouth"><span class="sw" style="background:orange"></span>Süd-projizierte Fläche</label></div>
+  <div class="sep"></div>
+  <div class="hdr">Teile – Auswahl</div>
+  <div id="partList"></div>
+  <div class="hint" style="margin-left:0">− = Teil nicht in die Kubatur übernehmen, + = wieder aufnehmen. Die NET-Kubatur und die Flächen bleiben auf alle Teile bezogen.</div>
+  <div class="hdr" style="margin-top:8px">GML-Export (Kubatur)</div>
+  <div class="ci"><select id="expGeom" style="font-size:12px;padding:2px;width:100%%"><option value="lod1">Quader (LoD1-Solid)</option><option value="lod2">Dachform (LoD2-Flächen)</option></select></div>
+  <button id="expBtn" type="button" style="width:100%%;padding:6px;font-size:13px;cursor:pointer;background:#1a5276;color:#fff;border:0;border-radius:4px">Kubatur-GML herunterladen</button>
+  <div class="hint" id="expInfo" style="margin-left:0;margin-top:4px"></div>
 </details></div>
 <div class="ebox"><details><summary>Flächen / Energie</summary><div class="ebody">%s</div></details></div>
 %s
 <script>
-var t=%s;var l=%s;var am=%s;var rmeta=%s;
+var t=%s;var l=%s;var am=%s;var rmeta=%s;var ptr=%s;var pmeta=%s;var xmeta=%s;var excl={};
 for(var q=0;q<t.length;q++){var o=t[q];
   if(o._bl){var s=atob(o._bl[0]),u=new Uint8Array(s.length),c;for(c=0;c<s.length;c++)u[c]=s.charCodeAt(c);
     var p=new Float32Array(u.buffer),n=o._bl[1];o.x=[];o.y=[];o.z=[];
@@ -2302,16 +2377,117 @@ function updOrig(){
   if(rm.length)Plotly.restyle('plotDiv',{'opacity':op},rm);
   if(bmesh.length)Plotly.restyle('plotDiv',{'opacity':sh?0.25:1.0},bmesh);
 }
+// an excluded Teil stays hidden whatever the view / checkboxes say
+function exOf(i){var p=ptr[i];return p!==undefined&&!!excl[p];}
 function setVis(idxs,vis){
   if(idxs.length===0)return;
-  Plotly.restyle('plotDiv','visible',idxs.map(function(){return vis;}),idxs);
+  Plotly.restyle('plotDiv','visible',idxs.map(function(i){return vis&&!exOf(i);}),idxs);
+}
+function applyMode(md,user){
+  if(md==='kubOff'){setVis(kr,false);setVis(kt,false);setVis(ktnet,false);setVis(bmesh,true);}
+  else if(md==='kubPer'){setVis(kr,false);setVis(kt,true);setVis(ktnet,false);setVis(bmesh,false);if(user)document.getElementById('showOrig').checked=true;}
+  else if(md==='kubNet'){setVis(kr,false);setVis(kt,false);setVis(ktnet,true);setVis(bmesh,true);}
+  else if(md==='kubRoof'){setVis(kt,false);setVis(ktnet,false);setVis(kr,true);setVis(bmesh,false);if(user)document.getElementById('showOrig').checked=true;}
+  updOrig();updAnn();
 }
 document.getElementById('showLbl').addEventListener('change',updAnn);
 document.getElementById('showRef').addEventListener('change',updAnn);
-document.getElementById('kubOff').addEventListener('change',function(){if(this.checked){setVis(kr,false);setVis(kt,false);setVis(ktnet,false);setVis(bmesh,true);updOrig();updAnn();}});
-document.getElementById('kubPer').addEventListener('change',function(){if(this.checked){setVis(kr,false);setVis(kt,true);setVis(ktnet,false);setVis(bmesh,false);document.getElementById('showOrig').checked=true;updOrig();updAnn();}});
-document.getElementById('kubNet').addEventListener('change',function(){if(this.checked){setVis(kr,false);setVis(kt,false);setVis(ktnet,true);setVis(bmesh,true);updOrig();updAnn();}});
-document.getElementById('kubRoof').addEventListener('change',function(){if(this.checked){setVis(kt,false);setVis(ktnet,false);setVis(kr,true);setVis(bmesh,false);document.getElementById('showOrig').checked=true;updOrig();updAnn();}});
+['kubOff','kubPer','kubNet','kubRoof'].forEach(function(id){
+  document.getElementById(id).addEventListener('change',function(){if(this.checked)applyMode(id,true);});});
+// ---- Teile: exclude / include ----
+var legIdx={};
+Object.keys(ptr).forEach(function(k){var i=+k;if(t[i].showlegend===true){(legIdx[ptr[k]]=legIdx[ptr[k]]||[]).push(i);}});
+function nIncl(){return pmeta.filter(function(m){return !excl[m.p];}).length;}
+function renderParts(){
+  var el=document.getElementById('partList');el.innerHTML='';
+  pmeta.forEach(function(m){
+    var r=document.createElement('div');r.className='prow'+(excl[m.p]?' off':'');
+    var b=document.createElement('button');b.type='button';b.textContent=excl[m.p]?'+':'\u2212';
+    b.title=excl[m.p]?'Teil wieder aufnehmen':'Teil ausschließen';
+    b.addEventListener('click',function(){togglePart(m.p);});
+    var sw=document.createElement('span');sw.className='sw';sw.style.background=m.clr;
+    var n=document.createElement('span');n.className='pn';n.textContent='Teil '+m.p;
+    var d=document.createElement('span');d.className='pd';
+    d.textContent=m.l.toFixed(1)+'\u00d7'+m.w.toFixed(1)+'\u00d7'+m.h.toFixed(1)+' m';
+    r.appendChild(b);r.appendChild(sw);r.appendChild(n);r.appendChild(d);el.appendChild(r);});
+  var ex=pmeta.length-nIncl();
+  document.getElementById('expInfo').textContent=nIncl()+' von '+pmeta.length+' Teilen im Export'+(ex?' ('+ex+' ausgeschlossen)':'');
+}
+function togglePart(p){
+  excl[p]=!excl[p];
+  if(legIdx[p])Plotly.restyle(gd,{showlegend:!excl[p]},legIdx[p]);
+  applyMode(curMode(),false);renderParts();
+}
+// ---- Kubatur GML (CityGML 2.0) of the included Teile ----
+function xe(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+var off=xmeta.off,bmin=null,bmax=null;
+function pos(q){var w=[q[0]+off[0],q[1]+off[1],q[2]+off[2]];
+  if(!bmin){bmin=w.slice();bmax=w.slice();}else{for(var a=0;a<3;a++){if(w[a]<bmin[a])bmin[a]=w[a];if(w[a]>bmax[a])bmax[a]=w[a];}}
+  return w[0].toFixed(3)+' '+w[1].toFixed(3)+' '+w[2].toFixed(3);}
+function poly(pts){return '<gml:Polygon><gml:exterior><gml:LinearRing><gml:posList srsDimension="3">'+
+  pts.concat([pts[0]]).map(pos).join(' ')+'</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon>';}
+function cuboidXml(m){
+  var tr=gd.data[m.kt],c=[];for(var q=0;q<8;q++)c.push([tr.x[q],tr.y[q],tr.z[q]]);
+  var f=[[c[0],c[3],c[2],c[1]],[c[4],c[5],c[6],c[7]]];
+  for(var a=0;a<4;a++){var b=(a+1)%%4;f.push([c[a],c[b],c[b+4],c[a+4]]);}
+  return '<bldg:lod1Solid><gml:Solid><gml:exterior><gml:CompositeSurface>'+
+    f.map(function(p){return '<gml:surfaceMember>'+poly(p)+'</gml:surfaceMember>';}).join('')+
+    '</gml:CompositeSurface></gml:exterior></gml:Solid></bldg:lod1Solid>';}
+function roofXml(m){
+  if(!m.rf||!m.rf.length)return '';
+  var g={RoofSurface:[],WallSurface:[],GroundSurface:[]};
+  m.rf.forEach(function(f){if(g[f[0]])g[f[0]].push(f[1]);});
+  var s='';
+  ['RoofSurface','WallSurface','GroundSurface'].forEach(function(ty){if(!g[ty].length)return;
+    s+='<bldg:boundedBy><bldg:'+ty+'><bldg:lod2MultiSurface><gml:MultiSurface>'+
+      g[ty].map(function(p){return '<gml:surfaceMember>'+poly(p)+'</gml:surfaceMember>';}).join('')+
+      '</gml:MultiSurface></bldg:lod2MultiSurface></bldg:'+ty+'></bldg:boundedBy>';});
+  return s;}
+function partXml(m,tag,mode){
+  var id=m.id||('Kubatur_Teil_'+m.p),lod2=(mode!=='lod1')&&!!(m.rf&&m.rf.length);
+  var s='<bldg:'+tag+' gml:id="'+xe(id)+'"><gml:name>Kubatur Teil '+m.p+'</gml:name>'+
+    '<gen:stringAttribute name="Kubatur_Teil"><gen:value>'+m.p+'</gen:value></gen:stringAttribute>'+
+    '<gen:doubleAttribute name="Kubatur_Laenge"><gen:value>'+m.l+'</gen:value></gen:doubleAttribute>'+
+    '<gen:doubleAttribute name="Kubatur_Breite"><gen:value>'+m.w+'</gen:value></gen:doubleAttribute>'+
+    '<gen:doubleAttribute name="Kubatur_Hoehe"><gen:value>'+m.h+'</gen:value></gen:doubleAttribute>'+
+    '<gen:doubleAttribute name="Kubatur_Volumen"><gen:value>'+m.v+'</gen:value></gen:doubleAttribute>';
+  if(lod2&&m.rt)s+='<bldg:roofType>'+xe(m.rt)+'</bldg:roofType>';
+  s+='<bldg:measuredHeight uom="m">'+(lod2?m.rh:m.h)+'</bldg:measuredHeight>'+
+     '<bldg:storeysAboveGround>'+m.s+'</bldg:storeysAboveGround>';
+  s+=lod2?roofXml(m):cuboidXml(m);   // Dachform missing -> Quader
+  return s+'</bldg:'+tag+'>';}
+function exportGml(){
+  var mode=document.getElementById('expGeom').value,inc=pmeta.filter(function(m){return !excl[m.p];});
+  if(!inc.length){alert('Alle Teile sind ausgeschlossen – nichts zu exportieren.');return;}
+  bmin=null;bmax=null;var groups=[],byPid={};
+  inc.forEach(function(m){if(m.pid){if(!byPid[m.pid]){byPid[m.pid]={pid:m.pid,parts:[]};groups.push(byPid[m.pid]);}byPid[m.pid].parts.push(m);}
+    else groups.push({pid:null,parts:[m]});});
+  var body=groups.map(function(gp){
+    if(!gp.pid)return '<core:cityObjectMember>'+partXml(gp.parts[0],'Building',mode)+'</core:cityObjectMember>';
+    return '<core:cityObjectMember><bldg:Building gml:id="'+xe(gp.pid)+'">'+gp.parts.map(function(m){
+      return '<bldg:consistsOfBuildingPart>'+partXml(m,'BuildingPart',mode)+'</bldg:consistsOfBuildingPart>';}).join('')+
+      '</bldg:Building></core:cityObjectMember>';}).join('\\n');
+  var srs=xmeta.srs?' srsName="'+xe(xmeta.srs)+'"':'';
+  var ex=pmeta.filter(function(m){return excl[m.p];}).map(function(m){return m.p;});
+  var x='<?xml version="1.0" encoding="UTF-8"?>\\n'+
+    '<core:CityModel xmlns:core="http://www.opengis.net/citygml/2.0" xmlns:bldg="http://www.opengis.net/citygml/building/2.0" '+
+    'xmlns:gen="http://www.opengis.net/citygml/generics/2.0" xmlns:gml="http://www.opengis.net/gml" '+
+    'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '+
+    'xsi:schemaLocation="http://www.opengis.net/citygml/building/2.0 http://schemas.opengis.net/citygml/building/2.0/building.xsd '+
+    'http://www.opengis.net/citygml/generics/2.0 http://schemas.opengis.net/citygml/generics/2.0/generics.xsd">\\n'+
+    '<!-- Kubatur-Export: '+inc.length+' von '+pmeta.length+' Teilen'+(ex.length?', ausgeschlossen: Teil '+ex.join(', '):'')+
+    ', Geometrie: '+mode+' -->\\n';
+  var bb='';   // envelope needs the coordinates, so the body is written first
+  x+='<gml:name>Kubatur'+(xmeta.addr.length?' '+xe(xmeta.addr[0]):'')+'</gml:name>\\n';
+  bb='<gml:boundedBy><gml:Envelope'+srs+' srsDimension="3"><gml:lowerCorner>'+bmin.map(function(v){return v.toFixed(3);}).join(' ')+
+     '</gml:lowerCorner><gml:upperCorner>'+bmax.map(function(v){return v.toFixed(3);}).join(' ')+'</gml:upperCorner></gml:Envelope></gml:boundedBy>\\n';
+  x+=bb+body+'\\n</core:CityModel>\\n';
+  var fn='Kubatur'+(xmeta.addr.length?'_'+xmeta.addr[0].replace(/[^A-Za-z0-9\\u00c0-\\u017f]+/g,'_').replace(/^_+|_+$/g,''):'')+'.gml';
+  var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([x],{type:'application/gml+xml'}));a.download=fn;
+  document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);
+}
+document.getElementById('expBtn').addEventListener('click',exportGml);
+renderParts();
 document.getElementById('showOrig').addEventListener('change',function(){updOrig();});
 document.getElementById('showBBox').addEventListener('change',function(){setVis(gbb,this.checked);});
 document.getElementById('showSrfFas').addEventListener('change',function(){setVis(sfas,this.checked);});
@@ -2323,5 +2499,5 @@ window.addEventListener('resize',function(){Plotly.Plots.resize('plotDiv')});
 if(gbb.length&&document.querySelector('.bbox.bbfail')){document.getElementById('showBBox').checked=true;setVis(gbb,true);}
 updAnn();
 </script></body></html>"""
-html_out = html_tpl % (_addr_html, tt, eh, _bb_html, tj, lj, amj, rmj)
+html_out = html_tpl % (_addr_html, tt, eh, _bb_html, tj, lj, amj, rmj, ptj, pmj, exj)
 print(f"\nHTML generated: {len(html_out)/1e6:.2f} MB")

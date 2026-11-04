@@ -59,3 +59,20 @@ rendered; the report page checks for every file (the Kubatur file included):
 
 The 3D viewer's "Datei" panel links to `/pruefung?kub=<token>`, which opens the check tab with
 the file just rendered pre-selected as Kubatur (kept on the server for 2 h like the results).
+
+## Teile ausschließen + Kubatur-GML (3D-Kubatur viewer)
+
+* Panel "Teile – Auswahl" in the viewer: one row per Teil with a **−** button. A Teil marked
+  with − is hidden in every view (building, Quader, Dachform, labels, reference edge, original
+  wireframe) and removed from the legend; **+** takes it back. The NET-Kubatur and the area
+  figures are still computed from all Teile.
+* "Kubatur-GML herunterladen" writes a CityGML 2.0 file in the browser containing only the
+  Teile that are still included, in the original coordinates and SRS:
+  * **Quader (LoD1-Solid)**: one `lod1Solid` cuboid per Teil.
+  * **Dachform (LoD2-Flächen)**: the reconstructed roof form as planar Roof/Wall/Ground
+    surfaces, with `roofType`.
+  The Building / BuildingPart structure and the `gml:id`s of the source file are kept, the
+  cuboid dimensions are added as generic attributes, and a `gml:Envelope` is written. The file
+  can be opened in the viewer again, or used as the Kubatur file in the Bounding-Box-Prüfung.
+* GML parts without semantic surfaces (e.g. plain LoD1 solids) are now split into wall / roof /
+  ground by their face normals, so such files produce cuboids too.
