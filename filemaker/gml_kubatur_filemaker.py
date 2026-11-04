@@ -1385,7 +1385,6 @@ for bd in building_data:
     # pieces -> world coords -> one mesh + feature edges (no def, plain loops)
     _rX=[]; _rY=[]; _rZ=[]; _rI=[]; _rJ=[]; _rK=[]
     _eX=[]; _eY=[]; _eZ=[]
-    _rF = []        # planar faces [kind, ring] for the Kubatur-GML export (outward ring order)
     _rvol = 0.0
     for _pc in _pieces:
         _P = np.array(_pc, dtype=float)
@@ -1401,18 +1400,6 @@ for bd in building_data:
         _rI.extend((_hpc.simplices[:,0] + _o).tolist())
         _rJ.extend((_hpc.simplices[:,1] + _o).tolist())
         _rK.extend((_hpc.simplices[:,2] + _o).tolist())
-        # coplanar hull facets -> one convex polygon each (outward normal = hull equation)
-        _fgrp = {}
-        for _f in range(len(_hpc.simplices)):
-            _fk = tuple(np.round(_hpc.equations[_f], 4))
-            _fgrp.setdefault(_fk, set()).update(int(_v) for _v in _hpc.simplices[_f])
-        for _fk, _fv in _fgrp.items():
-            _fn = np.array(_fk[:3]); _fP = _Wp[sorted(_fv)]; _fc = _fP.mean(0)
-            _fu = _fP[0] - _fc; _fu = _fu / (np.linalg.norm(_fu) + 1e-12); _fw = np.cross(_fn, _fu)
-            _fang = np.arctan2((_fP - _fc) @ _fw, (_fP - _fc) @ _fu)
-            _fring = _fP[np.argsort(_fang)]
-            _fkind = 'WallSurface' if abs(_fn[2]) < 0.15 else ('GroundSurface' if _fn[2] < -0.9 else 'RoofSurface')
-            _rF.append([_fkind, np.round(_fring, 3).tolist()])
         _nq = _hpc.equations[:, :3]
         for _f in range(len(_hpc.simplices)):
             for _v in range(3):
@@ -1436,12 +1423,6 @@ for bd in building_data:
                 _rX.append(float(_pl['pts'][_q][0])); _rY.append(float(_pl['pts'][_q][1])); _rZ.append(float(_pl['pts'][_q][2]))
             for _tr in _pl['tris']:
                 _rI.append(_tr[0] + _o); _rJ.append(_tr[1] + _o); _rK.append(_tr[2] + _o)
-            _fkind = {'roofs':'RoofSurface','ground':'GroundSurface'}.get(_pl['kind'], 'WallSurface')
-            _fring = np.asarray(_pl['pts'], dtype=float)
-            _fnw = np.zeros(3)
-            for _q in range(len(_fring)): _fnw += np.cross(_fring[_q], _fring[(_q+1) % len(_fring)])
-            if float(_fnw @ np.asarray(_pl['n'])) < 0: _fring = _fring[::-1]
-            _rF.append([_fkind, np.round(_fring, 3).tolist()])
             for _q in range(_np_):
                 _pq = _pl['pts'][_q]; _pr = _pl['pts'][(_q+1) % _np_]
                 _eX.extend([float(_pq[0]), float(_pr[0]), None])
@@ -1459,7 +1440,7 @@ for bd in building_data:
         'roof_code':_rt_code,'roof_name':_rt_name,'roof_label':_rt_label,
         'eave_h':_H_eave,'ridge_h':_H_ridge,'ridge_along':('W' if _swap else 'L'),
         'roof_mode':_roof_mode,'roof_vol':_rvol,
-        'roof_mesh':(_rX,_rY,_rZ,_rI,_rJ,_rK),'roof_edges':(_eX,_eY,_eZ),'roof_faces':_rF})
+        'roof_mesh':(_rX,_rY,_rZ,_rI,_rJ,_rK),'roof_edges':(_eX,_eY,_eZ)})
 
 # ===================================================================
 # KEEP NEIGHBOURS CONNECTED  (thermal-zone adjacency of the reconstruction)
@@ -2229,21 +2210,89 @@ for _el in root.iter():
     if _srs_name: break
 _part_meta = []
 for i, cd in enumerate(cuboid_data):
-    _u = _units[cd['part_idx'] - 1]; _par = _unit_parent.get(id(_u))
-    _uid = None; _pid = None
-    for _an, _av in _u.attrib.items():
-        if (_an.split('}',1)[1] if '}' in _an else _an) == 'id': _uid = _av
-    if _par is not None:
-        for _an, _av in _par.attrib.items():
-            if (_an.split('}',1)[1] if '}' in _an else _an) == 'id': _pid = _av
-    _part_meta.append({"p":cd['part_idx'],"id":_uid,"pid":_pid,"kt":_kt_idx.get(cd['part_idx']),
-        "kr":_kr_idx.get(cd['part_idx']),"clr":bcolors[(cd['part_idx']-1)%len(bcolors)],
-        "l":round(float(cd['length']),3),"w":round(float(cd['width']),3),"h":round(float(cd['height']),3),
-        "v":round(float(cd['volume']),2),"s":int(cd['storeys']),"rt":cd.get('roof_code'),
-        "rh":round(float(cd['ridge_h']),3),"rf":cd.get('roof_faces') or None})
-_export_meta = {"off":[float(v) for v in offset],"srs":_srs_name,"addr":_addresses[:1],"fms":FM_SCRIPT_NAME}
+    _part_meta.append({"p":cd['part_idx'],"clr":bcolors[(cd['part_idx']-1)%len(bcolors)],
+        "l":round(float(cd['length']),3),"w":round(float(cd['width']),3),"h":round(float(cd['height']),3)})
+# ORIGINAL-GEOMETRY EXTRACT. The export copies the selected Teile out of the
+# SOURCE GML unchanged (polygons, xlinks, gml:ids, attributes, addresses).
+# The source tree is cut into a skeleton with comment markers:
+#   <!--@@P n@@-->        where Teil n was (its consistsOfBuildingPart /
+#                         cityObjectMember wrapper is stored in _xp_part[n])
+#   <!--@@BS k@@--> ... <!--@@BE k@@-->  around a Building with parts: dropped
+#                         when none of its Teile is kept
+#   <!--@@BENV k@@-->, <!--@@ENV@@-->    Building / CityModel envelope,
+#                         rewritten for the kept Teile
+# The browser fills the markers. (root is not used after this point.)
+for _xpfx, _xuri in re.findall(r'xmlns:([\w.-]+)\s*=\s*"([^"]*)"', GML_text[:20000]):
+    if re.match(r'ns\d+$', _xpfx): continue
+    try: ET.register_namespace(_xpfx, _xuri)
+    except ValueError: pass
+_xp_gml = ''
+for _xpfx, _xuri in re.findall(r'xmlns:([\w.-]+)\s*=\s*"([^"]*)"', GML_text[:20000]):
+    if _xuri == ns_detected.get('gml'): _xp_gml = _xpfx; break
+_xp_par = {}
+for _xe in root.iter():
+    for _xc in _xe: _xp_par[id(_xc)] = _xe
+_xp_ln = lambda _e: (_e.tag.split('}',1)[1] if '}' in _e.tag else _e.tag).lower() if isinstance(_e.tag, str) else ''
+_xp_part = {}; _xp_bbox = {}; _xp_bparts = {}
+_xp_bdone = {}
+for bd in building_data:
+    _u = _units[bd['idx'] - 1]
+    _w = _xp_par.get(id(_u))
+    if _w is None or _xp_ln(_w) not in ('consistsofbuildingpart', 'cityobjectmember'): _w = _u
+    _wp = _xp_par.get(id(_w))
+    if _wp is None: continue
+    _tl = _w.tail; _w.tail = None
+    _xp_part[bd['idx']] = ET.tostring(_w, encoding='unicode')
+    _w.tail = _tl
+    _pos = list(_wp).index(_w); _wp.remove(_w)
+    _cm = ET.Comment(f"@@P{bd['idx']}@@"); _cm.tail = _tl; _wp.insert(_pos, _cm)
+    # envelope of the copied Teil: ALL its coordinates (incl. terrain intersection)
+    _xv = []
+    for _xe in _w.iter():
+        if _xp_ln(_xe) in ('poslist', 'pos') and _xe.text and _xe.text.strip():
+            try: _xn = [float(_v) for _v in _xe.text.split()]
+            except ValueError: continue
+            if len(_xn) >= 3 and len(_xn) % 3 == 0: _xv.append(np.array(_xn).reshape(-1, 3))
+    if _xv:
+        _xa = np.vstack(_xv)
+        _xp_bbox[bd['idx']] = [[float(v) for v in _xa.min(0)], [float(v) for v in _xa.max(0)]]
+    elif bd['bbox']:
+        _xp_bbox[bd['idx']] = [[float(v) for v in bd['bbox']['min'] + offset], [float(v) for v in bd['bbox']['max'] + offset]]
+    _b = _unit_parent.get(id(_u))
+    if _b is not None:
+        _k = _xp_bdone.setdefault(id(_b), len(_xp_bdone) + 1)
+        _xp_bparts.setdefault(_k, []).append(bd['idx'])
+        if len(_xp_bparts[_k]) == 1:
+            for _xc in list(_b):
+                if _xp_ln(_xc) == 'boundedby' and len(_xc) and _xp_ln(_xc[0]) == 'envelope':
+                    _ps = list(_b).index(_xc); _tl2 = _xc.tail; _b.remove(_xc)
+                    _cm = ET.Comment(f"@@BENV{_k}@@"); _cm.tail = _tl2; _b.insert(_ps, _cm)
+            _bw = _xp_par.get(id(_b))
+            if _bw is not None and _xp_ln(_bw) != 'cityobjectmember': _bw = _b
+            _bwp = _xp_par.get(id(_bw)) if _bw is not None else None
+            if _bwp is not None:
+                _ps = list(_bwp).index(_bw)
+                _cs = ET.Comment(f"@@BS{_k}@@"); _cs.tail = "\n"
+                _ce = ET.Comment(f"@@BE{_k}@@"); _ce.tail = _bw.tail; _bw.tail = "\n"
+                _bwp.insert(_ps, _cs); _bwp.insert(_ps + 2, _ce)
+for _xc in list(root):
+    if _xp_ln(_xc) == 'boundedby' and len(_xc) and _xp_ln(_xc[0]) == 'envelope':
+        _ps = list(root).index(_xc); _tl2 = _xc.tail; root.remove(_xc)
+        _cm = ET.Comment("@@ENV@@"); _cm.tail = _tl2; root.insert(_ps, _cm)
+_xp_skel = ET.tostring(root, encoding='unicode')
+# keep the ORIGINAL root start tag (all namespace declarations of the source):
+# ElementTree only declares what the remaining skeleton still uses
+_xp_ort = re.search(r'<(?![?!])[^>]*>', re.sub(r'<!--.*?-->', '', GML_text[:200000], flags=re.S))
+_xp_srt = re.match(r'<[^>]*>', _xp_skel)
+if (_xp_ort and _xp_srt and 'xmlns' in _xp_ort.group(0)
+        and _xp_ort.group(0).split()[0].split(':')[-1].rstrip('>') == _xp_srt.group(0).split()[0].split(':')[-1].rstrip('>')):
+    _xp_skel = _xp_ort.group(0) + _xp_skel[_xp_srt.end():]
+_xp_skel = '<?xml version="1.0" encoding="UTF-8"?>\n' + _xp_skel
+_export_meta = {"srs":_srs_name,"addr":_addresses[:1],"fms":FM_SCRIPT_NAME,"gp":_xp_gml,
+                "sk":_xp_skel,"px":{str(k): v for k, v in _xp_part.items()},
+                "pb":{str(k): v for k, v in _xp_bbox.items()},"bp":{str(k): v for k, v in _xp_bparts.items()}}
 ptj = json.dumps({str(k): v for k, v in _part_tr.items()}, separators=(',',':'))
-pmj = json.dumps(_part_meta, separators=(',',':')); exj = json.dumps(_export_meta, separators=(',',':'))
+pmj = json.dumps(_part_meta, separators=(',',':')); exj = json.dumps(_export_meta, separators=(',',':')).replace('</', '<\\/')
 
 layout = {"scene":{"xaxis":{"title":"X [m]"},"yaxis":{"title":"Y [m]"},"zaxis":{"title":"Z [m]"},"aspectmode":"data","camera":{"eye":{"x":1.5,"y":1.5,"z":1.2}}},"margin":{"l":0,"r":0,"t":0,"b":0},"hovermode":"closest","legend":{"x":0.0,"y":1.0,"xanchor":"left","yanchor":"top","bgcolor":"rgba(255,255,255,0.95)","bordercolor":"rgba(0,0,0,0.3)","borderwidth":1,"font":{"size":11},"itemwidth":30,"tracegroupgap":2},"updatemenus":[{"type":"buttons","direction":"right","x":0.5,"y":1.02,"xanchor":"center","yanchor":"bottom","buttons":[{"label":"Top","method":"relayout","args":[{"scene.camera.eye":{"x":0,"y":0,"z":2.5}}]},{"label":"Front","method":"relayout","args":[{"scene.camera.eye":{"x":0,"y":-2.5,"z":0}}]},{"label":"Right","method":"relayout","args":[{"scene.camera.eye":{"x":2.5,"y":0,"z":0}}]},{"label":"Iso","method":"relayout","args":[{"scene.camera.eye":{"x":1.5,"y":1.5,"z":1.2}}]}],"pad":{"r":10,"t":10},"showactive":True,"bgcolor":"lightblue","font":{"size":11}}]}
 layout["scene"]["annotations"] = scene_ann
@@ -2342,8 +2391,7 @@ html_tpl = """<!DOCTYPE html><html><head><meta charset="UTF-8">
   <div class="hdr">Teile – Auswahl</div>
   <div id="partList"></div>
   <div class="hint" style="margin-left:0">Klick auf einen Teil im 3D-Modell (oder −) = nicht in die Kubatur übernehmen; nochmal klicken (oder +) = wieder aufnehmen. Ausgeschlossene Teile bleiben schwach sichtbar. Die NET-Kubatur und die Flächen bleiben auf alle Teile bezogen.</div>
-  <div class="hdr" style="margin-top:8px">GML-Export (Kubatur)</div>
-  <div class="ci"><select id="expGeom" style="font-size:12px;padding:2px;width:100%%"><option value="lod1">Quader (LoD1-Solid)</option><option value="lod2">Dachform (LoD2-Flächen)</option></select></div>
+  <div class="hdr" style="margin-top:8px">GML-Export (LoD2, Originalgeometrie)</div>
   <button id="expBtn" type="button" style="width:100%%;padding:6px;font-size:13px;cursor:pointer;background:#1a5276;color:#fff;border:0;border-radius:4px">Kubatur-GML exportieren</button>
   <div class="hint" id="expInfo" style="margin-left:0;margin-top:4px"></div>
 </details></div>
@@ -2463,70 +2511,28 @@ gd.on('plotly_click',function(ev){
   setTimeout(function(){togglePart(p);},0);   // not inside Plotly's render callback
 });
 gd.addEventListener('pointerdown',function(){armed=true;},true);
-// ---- Kubatur GML (CityGML 2.0) of the included Teile ----
-function xe(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-var off=xmeta.off,bmin=null,bmax=null;
-function pos(q){var w=[q[0]+off[0],q[1]+off[1],q[2]+off[2]];
-  if(!bmin){bmin=w.slice();bmax=w.slice();}else{for(var a=0;a<3;a++){if(w[a]<bmin[a])bmin[a]=w[a];if(w[a]>bmax[a])bmax[a]=w[a];}}
-  return w[0].toFixed(3)+' '+w[1].toFixed(3)+' '+w[2].toFixed(3);}
-function poly(pts){return '<gml:Polygon><gml:exterior><gml:LinearRing><gml:posList srsDimension="3">'+
-  pts.concat([pts[0]]).map(pos).join(' ')+'</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon>';}
-function cuboidXml(m){
-  var tr=gd.data[m.kt],c=[];for(var q=0;q<8;q++)c.push([tr.x[q],tr.y[q],tr.z[q]]);
-  var f=[[c[0],c[3],c[2],c[1]],[c[4],c[5],c[6],c[7]]];
-  for(var a=0;a<4;a++){var b=(a+1)%%4;f.push([c[a],c[b],c[b+4],c[a+4]]);}
-  return '<bldg:lod1Solid><gml:Solid><gml:exterior><gml:CompositeSurface>'+
-    f.map(function(p){return '<gml:surfaceMember>'+poly(p)+'</gml:surfaceMember>';}).join('')+
-    '</gml:CompositeSurface></gml:exterior></gml:Solid></bldg:lod1Solid>';}
-function roofXml(m){
-  if(!m.rf||!m.rf.length)return '';
-  var g={RoofSurface:[],WallSurface:[],GroundSurface:[]};
-  m.rf.forEach(function(f){if(g[f[0]])g[f[0]].push(f[1]);});
-  var s='';
-  ['RoofSurface','WallSurface','GroundSurface'].forEach(function(ty){if(!g[ty].length)return;
-    s+='<bldg:boundedBy><bldg:'+ty+'><bldg:lod2MultiSurface><gml:MultiSurface>'+
-      g[ty].map(function(p){return '<gml:surfaceMember>'+poly(p)+'</gml:surfaceMember>';}).join('')+
-      '</gml:MultiSurface></bldg:lod2MultiSurface></bldg:'+ty+'></bldg:boundedBy>';});
-  return s;}
-function partXml(m,tag,mode){
-  var id=m.id||('Kubatur_Teil_'+m.p),lod2=(mode!=='lod1')&&!!(m.rf&&m.rf.length);
-  var s='<bldg:'+tag+' gml:id="'+xe(id)+'"><gml:name>Kubatur Teil '+m.p+'</gml:name>'+
-    '<gen:stringAttribute name="Kubatur_Teil"><gen:value>'+m.p+'</gen:value></gen:stringAttribute>'+
-    '<gen:doubleAttribute name="Kubatur_Laenge"><gen:value>'+m.l+'</gen:value></gen:doubleAttribute>'+
-    '<gen:doubleAttribute name="Kubatur_Breite"><gen:value>'+m.w+'</gen:value></gen:doubleAttribute>'+
-    '<gen:doubleAttribute name="Kubatur_Hoehe"><gen:value>'+m.h+'</gen:value></gen:doubleAttribute>'+
-    '<gen:doubleAttribute name="Kubatur_Volumen"><gen:value>'+m.v+'</gen:value></gen:doubleAttribute>';
-  if(lod2&&m.rt)s+='<bldg:roofType>'+xe(m.rt)+'</bldg:roofType>';
-  s+='<bldg:measuredHeight uom="m">'+(lod2?m.rh:m.h)+'</bldg:measuredHeight>'+
-     '<bldg:storeysAboveGround>'+m.s+'</bldg:storeysAboveGround>';
-  s+=lod2?roofXml(m):cuboidXml(m);   // Dachform missing -> Quader
-  return s+'</bldg:'+tag+'>';}
+// ---- Kubatur GML: the kept Teile copied unchanged out of the source GML ----
+function envXml(parts){
+  var lo=null,hi=null;
+  parts.forEach(function(p){var b=xmeta.pb[p];if(!b)return;
+    if(!lo){lo=b[0].slice();hi=b[1].slice();}else{for(var a=0;a<3;a++){lo[a]=Math.min(lo[a],b[0][a]);hi[a]=Math.max(hi[a],b[1][a]);}}});
+  if(!lo)return '';
+  var g=xmeta.gp?xmeta.gp+':':'',f=function(v){return v.map(function(c){return c.toFixed(3);}).join(' ');};
+  return '<'+g+'boundedBy><'+g+'Envelope'+(xmeta.srs?' srsName="'+String(xmeta.srs).replace(/"/g,'&quot;')+'"':'')+' srsDimension="3">'+
+    '<'+g+'lowerCorner>'+f(lo)+'</'+g+'lowerCorner><'+g+'upperCorner>'+f(hi)+'</'+g+'upperCorner></'+g+'Envelope></'+g+'boundedBy>';}
 function exportGml(){
-  var mode=document.getElementById('expGeom').value,inc=pmeta.filter(function(m){return !excl[m.p];});
+  var keep={},inc=[];pmeta.forEach(function(m){if(!excl[m.p]){keep[m.p]=true;inc.push(m.p);}});
+  Object.keys(xmeta.px).forEach(function(k){if(!pmeta.some(function(m){return String(m.p)===k;}))keep[k]=true;});  // Teile without a Kubatur: keep
   if(!inc.length){alert('Alle Teile sind ausgeschlossen – nichts zu exportieren.');return;}
-  bmin=null;bmax=null;var groups=[],byPid={};
-  inc.forEach(function(m){if(m.pid){if(!byPid[m.pid]){byPid[m.pid]={pid:m.pid,parts:[]};groups.push(byPid[m.pid]);}byPid[m.pid].parts.push(m);}
-    else groups.push({pid:null,parts:[m]});});
-  var body=groups.map(function(gp){
-    if(!gp.pid)return '<core:cityObjectMember>'+partXml(gp.parts[0],'Building',mode)+'</core:cityObjectMember>';
-    return '<core:cityObjectMember><bldg:Building gml:id="'+xe(gp.pid)+'">'+gp.parts.map(function(m){
-      return '<bldg:consistsOfBuildingPart>'+partXml(m,'BuildingPart',mode)+'</bldg:consistsOfBuildingPart>';}).join('')+
-      '</bldg:Building></core:cityObjectMember>';}).join('\\n');
-  var srs=xmeta.srs?' srsName="'+xe(xmeta.srs)+'"':'';
+  var x=xmeta.sk;
+  x=x.replace(/<!--@@BS(\\d+)@@-->([\\s\\S]*?)<!--@@BE\\1@@-->\\n?/g,function(m,k,body){
+    var kp=(xmeta.bp[k]||[]).filter(function(p){return keep[p];});
+    return kp.length?body.replace('<!--@@BENV'+k+'@@-->',envXml(kp)):'';});
+  x=x.replace(/<!--@@P(\\d+)@@-->/g,function(m,p){return keep[p]?xmeta.px[p]:'';});
+  x=x.replace('<!--@@ENV@@-->',envXml(Object.keys(keep)));
   var ex=pmeta.filter(function(m){return excl[m.p];}).map(function(m){return m.p;});
-  var x='<?xml version="1.0" encoding="UTF-8"?>\\n'+
-    '<core:CityModel xmlns:core="http://www.opengis.net/citygml/2.0" xmlns:bldg="http://www.opengis.net/citygml/building/2.0" '+
-    'xmlns:gen="http://www.opengis.net/citygml/generics/2.0" xmlns:gml="http://www.opengis.net/gml" '+
-    'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '+
-    'xsi:schemaLocation="http://www.opengis.net/citygml/building/2.0 http://schemas.opengis.net/citygml/building/2.0/building.xsd '+
-    'http://www.opengis.net/citygml/generics/2.0 http://schemas.opengis.net/citygml/generics/2.0/generics.xsd">\\n'+
-    '<!-- Kubatur-Export: '+inc.length+' von '+pmeta.length+' Teilen'+(ex.length?', ausgeschlossen: Teil '+ex.join(', '):'')+
-    ', Geometrie: '+mode+' -->\\n';
-  var bb='';   // envelope needs the coordinates, so the body is written first
-  x+='<gml:name>Kubatur'+(xmeta.addr.length?' '+xe(xmeta.addr[0]):'')+'</gml:name>\\n';
-  bb='<gml:boundedBy><gml:Envelope'+srs+' srsDimension="3"><gml:lowerCorner>'+bmin.map(function(v){return v.toFixed(3);}).join(' ')+
-     '</gml:lowerCorner><gml:upperCorner>'+bmax.map(function(v){return v.toFixed(3);}).join(' ')+'</gml:upperCorner></gml:Envelope></gml:boundedBy>\\n';
-  x+=bb+body+'\\n</core:CityModel>\\n';
+  x=x.replace(/\\?>\\n?/,'?>\\n<!-- Kubatur-Extrakt (Originalgeometrie): '+inc.length+' von '+pmeta.length+' Teilen'+
+    (ex.length?', ausgeschlossen: Teil '+ex.join(', '):'')+' -->\\n');
   var fn='Kubatur'+(xmeta.addr.length?'_'+xmeta.addr[0].replace(/[^A-Za-z0-9\\u00c0-\\u017f]+/g,'_').replace(/^_+|_+$/g,''):'')+'.gml';
   // inside a FileMaker Web Viewer: hand the GML text to a FileMaker script
   // (it stores it in a text field); anywhere else: download it as a file

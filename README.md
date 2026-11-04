@@ -69,14 +69,12 @@ the file just rendered pre-selected as Kubatur (kept on the server for 2 h like 
   from all Teile.
 * "Abmessungen & Dachtyp" labels are off by default; the last clicked Teil is always labelled
   (clicking a Teil's name in the panel labels it without toggling it).
-* "Kubatur-GML herunterladen" writes a CityGML 2.0 file in the browser containing only the
-  Teile that are still included, in the original coordinates and SRS:
-  * **Quader (LoD1-Solid)**: one `lod1Solid` cuboid per Teil.
-  * **Dachform (LoD2-Flächen)**: the reconstructed roof form as planar Roof/Wall/Ground
-    surfaces, with `roofType`.
-  The Building / BuildingPart structure and the `gml:id`s of the source file are kept, the
-  cuboid dimensions are added as generic attributes, and a `gml:Envelope` is written. The file
-  can be opened in the viewer again, or used as the Kubatur file in the Bounding-Box-Prüfung.
+* "Kubatur-GML exportieren" writes the **extract of the source GML**: the Teile that are still
+  included are copied out of the uploaded file unchanged (original LoD2 polygons, xlinks,
+  `gml:id`s, attributes, addresses); excluded Teile are removed, a Building whose Teile are all
+  excluded is dropped, and the CityModel / Building envelopes are recomputed from the kept
+  coordinates. In a FileMaker Web Viewer the text goes to a FileMaker script (see below),
+  elsewhere it is downloaded.
 * GML parts without semantic surfaces (e.g. plain LoD1 solids) are now split into wall / roof /
   ground by their face normals, so such files produce cuboids too.
 
