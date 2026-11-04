@@ -2503,8 +2503,11 @@ function exportGml(){
   var fn='Kubatur'+(xmeta.addr.length?'_'+xmeta.addr[0].replace(/[^A-Za-z0-9\\u00c0-\\u017f]+/g,'_').replace(/^_+|_+$/g,''):'')+'.gml';
   // inside a FileMaker Web Viewer: hand the GML text to a FileMaker script
   // (it stores it in a text field); anywhere else: download it as a file
-  if(window.FileMaker&&typeof window.FileMaker.PerformScript==='function'){
-    try{window.FileMaker.PerformScript(xmeta.fms,x);
+  if(window.FileMaker&&(typeof window.FileMaker.PerformScriptWithOption==='function'||typeof window.FileMaker.PerformScript==='function')){
+    // option 5 = "Suspend and Resume": run now even if another FileMaker
+    // script is running or paused (plain PerformScript would only queue it)
+    try{if(typeof window.FileMaker.PerformScriptWithOption==='function')window.FileMaker.PerformScriptWithOption(xmeta.fms,x,'5');
+      else window.FileMaker.PerformScript(xmeta.fms,x);
       document.getElementById('expInfo').textContent='An FileMaker übergeben (Script \u201e'+xmeta.fms+'\u201c): '+inc.length+' Teile, '+Math.round(x.length/1024)+' kB';}
     catch(e){alert('FileMaker-Script \u201e'+xmeta.fms+'\u201c konnte nicht ausgeführt werden: '+e);}
     return;}
